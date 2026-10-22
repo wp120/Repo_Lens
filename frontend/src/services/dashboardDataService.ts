@@ -1,10 +1,6 @@
 import type { Repository } from "../types/app";
+import { repositoryService } from "./repositoryService";
 
 export async function loadDashboardRepositories(): Promise<Repository[]> {
-  if (import.meta.env.DEV) {
-    const { mockRepositories } = await import("./mockDashboardData");
-    return mockRepositories;
-  }
-
-  return [];
+  return repositoryService.listRepositories();
 }

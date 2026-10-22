@@ -10,6 +10,31 @@ export function AppLayout() {
   const [isAddRepositoryOpen, setAddRepositoryOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
+  function attachRepository(repository: (typeof repositories)[number]) {
+    setRepositories((current) => {
+      const existing = current.find((item) => item.id === repository.id);
+      if (!existing) return [...current, repository];
+      const branch = repository.branches[0];
+      if (existing.branches.some((item) => item.id === branch.id)) {
+        return current.map((item) =>
+          item.id === repository.id
+            ? {
+                ...item,
+                branches: item.branches.map((currentBranch) =>
+                  currentBranch.id === branch.id ? branch : currentBranch,
+                ),
+              }
+            : item,
+        );
+      }
+      return current.map((item) =>
+        item.id === repository.id
+          ? { ...item, branches: [...item.branches, branch] }
+          : item,
+      );
+    });
+  }
+
   return (
     <div className="app-shell">
       <AppHeader onToggleSidebar={() => setSidebarOpen((open) => !open)} />
@@ -40,7 +65,10 @@ export function AppLayout() {
         </main>
       </div>
       {isAddRepositoryOpen && (
-        <AddRepositoryModal onClose={() => setAddRepositoryOpen(false)} />
+        <AddRepositoryModal
+          onClose={() => setAddRepositoryOpen(false)}
+          onRepositoryAttached={attachRepository}
+        />
       )}
     </div>
   );

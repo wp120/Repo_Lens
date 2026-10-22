@@ -1,16 +1,33 @@
 import { useState, type FormEvent } from "react";
-import { repositoryService } from "../services/repositoryService";
+import {
+  repositoryService,
+  toDashboardRepository,
+  type AddRepositoryResult,
+} from "../services/repositoryService";
+import type { Repository } from "../types/app";
 import { Icon } from "./Icon";
 
-export function AddRepositoryModal({ onClose }: { onClose: () => void }) {
+interface AddRepositoryModalProps {
+  onClose: () => void;
+  onRepositoryAttached: (repository: Repository) => void;
+}
+
+export function AddRepositoryModal({
+  onClose,
+  onRepositoryAttached,
+}: AddRepositoryModalProps) {
   const [url, setUrl] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
   const [requestError, setRequestError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addedRepository, setAddedRepository] = useState<{
     name: string;
-    defaultBranch: string;
+    branchName: string;
   } | null>(null);
+  const [confirmation, setConfirmation] = useState<Extract<
+    AddRepositoryResult,
+    { state: "confirmation_required" }
+  > | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,10 +42,15 @@ export function AddRepositoryModal({ onClose }: { onClose: () => void }) {
     setIsSubmitting(true);
     try {
       const result = await repositoryService.addRepository(url.trim());
-      setAddedRepository({
-        name: result.repositoryName,
-        defaultBranch: result.defaultBranch,
-      });
+      if (result.state === "attached") {
+        onRepositoryAttached(toDashboardRepository(result));
+        setAddedRepository({
+          name: result.repository.name,
+          branchName: result.repository.branchName,
+        });
+      } else {
+        setConfirmation(result);
+      }
     } catch (reason) {
       setRequestError(
         reason instanceof Error
@@ -74,13 +96,56 @@ export function AddRepositoryModal({ onClose }: { onClose: () => void }) {
         {addedRepository ? (
           <div className="repository-success" role="status">
             <span className="success-check">✓</span>
-            <h3>{addedRepository.name} connected</h3>
+            <h3>{addedRepository.name} added to your dashboard</h3>
             <p>
-              Default branch: <strong>{addedRepository.defaultBranch}</strong>
+              Branch: <strong>{addedRepository.branchName}</strong>
             </p>
             <button className="button-primary" onClick={onClose} type="button">
               Done
             </button>
+          </div>
+        ) : confirmation ? (
+          <div className="repository-success">
+            <span className="modal-icon">
+              <Icon name="branch" />
+            </span>
+            <h3>
+              {confirmation.repository.owner}/{confirmation.repository.name}
+            </h3>
+            <p>
+              Branch to ingest:{" "}
+              <strong>{confirmation.repository.branchName}</strong>
+            </p>
+            {confirmation.status === "failed" ? (
+              <p role="status">
+                Indexing previously failed for this branch. Retry processing is
+                not available yet.
+              </p>
+            ) : (
+              <p>
+                This branch is not indexed yet. Confirming will not start
+                ingestion in this version.
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                className="button-secondary"
+                onClick={onClose}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button-primary"
+                onClick={() => {
+                  console.log("Ingestion confirmed.");
+                  onClose();
+                }}
+                type="button"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         ) : (
           <form className="repository-form" onSubmit={handleSubmit}>
@@ -169,13 +234,5 @@ function validateGitHubRepositoryUrl(value: string): string | null {
   if (!/^[\w.-]+$/.test(repositoryName)) {
     return "The repository URL is not in a recognized format.";
   }
-  if (
-    segments.length > 2 &&
-    ["tree", "blob"].includes(segments[2]) &&
-    segments.length < 4
-  ) {
-    return "Include a branch name after the tree or blob path.";
-  }
-
   return null;
 }

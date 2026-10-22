@@ -4,6 +4,7 @@ import { getFrontendOrigin, sessionMiddleware } from "./config/session.js";
 import { authRouter } from "./routes/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { healthRouter } from "./routes/health.js";
+import { repositoriesRouter } from "./routes/repositories.js";
 
 export const app = express();
 
@@ -21,4 +22,5 @@ app.use(express.json({ limit: "16kb" }));
 app.use(sessionMiddleware);
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/repositories", repositoriesRouter);
 app.use(errorHandler);

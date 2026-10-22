@@ -1,6 +1,6 @@
 # RepoLens
 
-RepoLens is a workspace for exploring and understanding software repositories. This initial setup provides the frontend, API, and local infrastructure; product features will be added in later steps.
+RepoLens is a workspace for exploring and understanding software repositories. The project includes a React frontend, an Express API, PostgreSQL persistence, and Redis-backed sessions and jobs.
 
 ## Prerequisites
 
@@ -50,9 +50,11 @@ RepoLens is a workspace for exploring and understanding software repositories. T
 
 Stop local services with `docker compose down`. PostgreSQL data is stored in the `postgres_data` Docker volume and is retained when containers stop.
 
-## Frontend preview
+## Add a repository
 
-Development-only repository/conversation sample data can be shown after signing in. It does not connect to GitHub or the backend. The repository dialog validates GitHub URL format, but repository checks, branch resolution, indexing, and account/quota enforcement require future API work; chat is not connected yet.
+After signing in, use **Add repository** to submit a public GitHub repository URL or branch URL. The backend validates the URL and verifies the public repository and branch with GitHub's API. Repository URLs without a branch resolve to the repository's actual default branch. Private repositories are not supported.
+
+If the resolved branch already has a ready index, it is attached to the signed-in user's dashboard. Existing queued/indexing branches reuse their current status. For a new or previously failed branch, the UI asks for confirmation; confirming currently only logs `Ingestion confirmed.` and starts no work. Ingestion, retries, conversations, and chat remain out of scope.
 
 ## Authentication
 
@@ -62,10 +64,10 @@ The API routes are `POST /api/auth/register`, `POST /api/auth/login`, `POST /api
 
 ## Database and Prisma
 
-PostgreSQL is configured with the `pgvector` extension available, and Redis is provided for BullMQ jobs. Prisma 7 configuration and a PostgreSQL driver-adapter factory are scaffolded in the backend. The schema intentionally contains no application models yet. Do not run Prisma client generation or migrations until the finalized application schema is added.
+PostgreSQL is configured with the `pgvector` extension available, and Redis is provided for BullMQ jobs and server-side sessions. Prisma 7 uses the PostgreSQL driver adapter. The schema includes users plus the repository, branch-index, and user-branch-access models needed for authentication and the Add Repository flow; other finalized application models remain to be added.
 
-The migration command is `npm run prisma:migrate:dev --workspace=backend`; deploy migrations with `npm run prisma:migrate:deploy --workspace=backend` once a schema and migrations exist. Create migrations from the backend workspace with `npm run prisma:migrate:create --workspace=backend -- --name <migration-name>`. Prisma migrations will be stored in `database/migrations`.
+Apply committed migrations with `npm run prisma:migrate:deploy --workspace=backend`. For local schema changes, use `npm run prisma:migrate:dev --workspace=backend`; create migrations with `npm run prisma:migrate:create --workspace=backend -- --name <migration-name>`. Prisma migrations are stored in `database/migrations`.
 
 ## Current scope
 
-This is setup scaffolding only. The frontend provides routing and a development-preview dashboard. The backend includes the Tree-sitter runtime, but language grammars and parsing flows are deferred. Authentication, GitHub integration, repository indexing, chat APIs, embeddings, and AI-provider calls are not implemented.
+The Add Repository flow uses GitHub's public REST API for repository and branch verification. GitHub OAuth, private repository access, repository ingestion/indexing, language parsing, chat APIs, embeddings, and AI-provider calls are not implemented.
