@@ -209,7 +209,7 @@ async function getBranch(
   return branch.name;
 }
 
-async function getGitHubJson<T>(
+export async function getGitHubJson<T>(
   url: string,
   fetcher: typeof fetch,
 ): Promise<T> {

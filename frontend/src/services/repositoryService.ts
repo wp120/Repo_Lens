@@ -27,7 +27,13 @@ interface ResolvedRepository {
 export interface RepositoryService {
   listRepositories(): Promise<Repository[]>;
   addRepository(url: string): Promise<AddRepositoryResult>;
+  initiateIngestion(url: string): Promise<AttachedRepositoryResult>;
 }
+
+export type AttachedRepositoryResult = Extract<
+  AddRepositoryResult,
+  { state: "attached" }
+>;
 
 export const repositoryService: RepositoryService = {
   async listRepositories() {
@@ -38,10 +44,15 @@ export const repositoryService: RepositoryService = {
       url,
     });
   },
+  async initiateIngestion(url) {
+    return apiMutate<AttachedRepositoryResult>("/api/repositories/ingest", {
+      url,
+    });
+  },
 };
 
 export function toDashboardRepository(
-  result: Extract<AddRepositoryResult, { state: "attached" }>,
+  result: AttachedRepositoryResult,
 ): Repository {
   const branch: RepositoryBranch = {
     id: result.branchIndexId,

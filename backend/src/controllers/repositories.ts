@@ -5,6 +5,10 @@ import {
   getUserRepositories,
   resolveAndAttachRepository,
 } from "../services/repositoryFlow.js";
+import {
+  initiateRepositoryIngestion,
+  RepositoryIngestionError,
+} from "../services/ingestionFlow.js";
 
 const repositoryUrlSchema = z.object({
   url: z.string().trim().min(1).max(2048),
@@ -57,6 +61,47 @@ export const resolveRepository: RequestHandler = async (
     });
   } catch (error) {
     if (error instanceof GitHubRepositoryError) {
+      response.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+    next(error);
+  }
+};
+
+export const initiateIngestion: RequestHandler = async (
+  request,
+  response,
+  next,
+) => {
+  const userId = request.session.userId;
+  if (!userId) {
+    response.status(401).json({ error: "Authentication required." });
+    return;
+  }
+  const parsed = repositoryUrlSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({
+      error: "Enter a valid GitHub repository URL.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  try {
+    const result = await initiateRepositoryIngestion(parsed.data.url, userId);
+    response.json({
+      ...result,
+      repository: {
+        ...result.repository,
+        githubRepoId: result.repository.githubRepoId.toString(),
+      },
+    });
+  } catch (error) {
+    console.log("error while initiating ingestion: ", error);
+    if (
+      error instanceof GitHubRepositoryError ||
+      error instanceof RepositoryIngestionError
+    ) {
       response.status(error.statusCode).json({ error: error.message });
       return;
     }

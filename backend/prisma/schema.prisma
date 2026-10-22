@@ -9,38 +9,42 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique @db.VarChar(320)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String                @id @default(uuid()) @db.Uuid
+  email        String                @unique @db.VarChar(320)
+  passwordHash String                @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   branchAccess UserBranchAccess[]
+  ingestions   UserBranchIngestion[]
 
   @@map("users")
 }
 
 model Repository {
-  id            String         @id @default(uuid()) @db.Uuid
-  githubRepoId  BigInt         @unique @map("github_repo_id")
-  owner         String         @db.VarChar(255)
-  name          String         @db.VarChar(255)
-  htmlUrl       String         @map("html_url") @db.VarChar(2048)
-  defaultBranch String         @map("default_branch") @db.VarChar(255)
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String        @id @default(uuid()) @db.Uuid
+  githubRepoId  BigInt        @unique @map("github_repo_id")
+  owner         String        @db.VarChar(255)
+  name          String        @db.VarChar(255)
+  htmlUrl       String        @map("html_url") @db.VarChar(2048)
+  defaultBranch String        @map("default_branch") @db.VarChar(255)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   branchIndexes BranchIndex[]
 
   @@map("repositories")
 }
 
 model BranchIndex {
-  id             String            @id @default(uuid()) @db.Uuid
-  repositoryId   String            @map("repository_id") @db.Uuid
-  branchName     String            @map("branch_name") @db.VarChar(255)
-  status         String            @default("queued") @db.VarChar(32)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-  repository     Repository        @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  userAccess     UserBranchAccess[]
+  id               String                @id @default(uuid()) @db.Uuid
+  repositoryId     String                @map("repository_id") @db.Uuid
+  branchName       String                @map("branch_name") @db.VarChar(255)
+  status           String                @default("queued") @db.VarChar(32)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ingestionAttempt Int                   @default(0) @map("ingestion_attempt")
+  lastError        String?               @map("last_error") @db.Text
+  repository       Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  userAccess       UserBranchAccess[]
+  ingestions       UserBranchIngestion[]
 
   @@unique([repositoryId, branchName])
   @@map("branch_indexes")
@@ -56,4 +60,16 @@ model UserBranchAccess {
   @@id([userId, branchIndexId])
   @@index([branchIndexId])
   @@map("user_branch_access")
+}
+
+model UserBranchIngestion {
+  userId        String      @map("user_id") @db.Uuid
+  branchIndexId String      @map("branch_index_id") @db.Uuid
+  initiatedAt   DateTime    @default(now()) @map("initiated_at") @db.Timestamptz(6)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchIndex   BranchIndex @relation(fields: [branchIndexId], references: [id], onDelete: Restrict)
+
+  @@id([userId, branchIndexId])
+  @@index([userId])
+  @@map("user_branch_ingestions")
 }

@@ -31,6 +31,7 @@ export function AddRepositoryModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
     setRequestError("");
     const validation = validateGitHubRepositoryUrl(url);
     if (validation) {
@@ -66,7 +67,7 @@ export function AddRepositoryModal({
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!isSubmitting && event.target === event.currentTarget) onClose();
       }}
     >
       <section
@@ -87,6 +88,7 @@ export function AddRepositoryModal({
             aria-label="Close dialog"
             className="icon-button"
             onClick={onClose}
+            disabled={isSubmitting}
             type="button"
           >
             <Icon name="close" />
@@ -118,32 +120,65 @@ export function AddRepositoryModal({
             </p>
             {confirmation.status === "failed" ? (
               <p role="status">
-                Indexing previously failed for this branch. Retry processing is
-                not available yet.
+                Indexing previously failed. Confirm to retry this branch.
               </p>
             ) : (
-              <p>
-                This branch is not indexed yet. Confirming will not start
-                ingestion in this version.
-              </p>
+              <p>This branch is not indexed yet. Confirm to start ingestion.</p>
+            )}
+            {requestError && (
+              <div className="request-error" role="alert">
+                <strong>Ingestion not started</strong>
+                <span>{requestError}</span>
+              </div>
             )}
             <div className="modal-actions">
               <button
                 className="button-secondary"
                 onClick={onClose}
+                disabled={isSubmitting}
                 type="button"
               >
                 Cancel
               </button>
               <button
                 className="button-primary"
-                onClick={() => {
-                  console.log("Ingestion confirmed.");
-                  onClose();
+                disabled={isSubmitting}
+                onClick={async () => {
+                  if (isSubmitting) return;
+                  setIsSubmitting(true);
+                  setRequestError("");
+                  try {
+                    const result = await repositoryService.initiateIngestion(
+                      url.trim(),
+                    );
+                    onRepositoryAttached(toDashboardRepository(result));
+                    setConfirmation(null);
+                    setAddedRepository({
+                      name: result.repository.name,
+                      branchName: result.repository.branchName,
+                    });
+                  } catch (reason) {
+                    setRequestError(
+                      reason instanceof Error
+                        ? reason.message
+                        : "Could not start ingestion.",
+                    );
+                  } finally {
+                    setIsSubmitting(false);
+                  }
                 }}
                 type="button"
               >
-                Confirm
+                {isSubmitting ? (
+                  <>
+                    <span className="spinner spinner-small" />
+                    Starting…
+                  </>
+                ) : confirmation.status === "failed" ? (
+                  "Retry ingestion"
+                ) : (
+                  "Confirm ingestion"
+                )}
               </button>
             </div>
           </div>
