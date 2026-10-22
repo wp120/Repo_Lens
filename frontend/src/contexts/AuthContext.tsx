@@ -16,16 +16,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    const restoreSession = async () => {
-      if (import.meta.env.DEV) {
-        const { devMockAuthService } =
-          await import("../services/devMockAuthService");
-        return devMockAuthService.getSession();
-      }
-      return authService.getSession();
-    };
-
-    restoreSession()
+    authService
+      .getSession()
       .then((sessionUser) => {
         if (active) setUser(sessionUser);
       })
@@ -64,8 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    (name: string, email: string, password: string) =>
-      authenticate(() => authService.register(name, email, password)),
+    (email: string, password: string) =>
+      authenticate(() => authService.register(email, password)),
     [authenticate],
   );
 
@@ -73,13 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setIsLoading(true);
     try {
-      if (import.meta.env.DEV && user?.id === "preview-user") {
-        const { devMockAuthService } =
-          await import("../services/devMockAuthService");
-        await devMockAuthService.signOut();
-      } else {
-        await authService.signOut();
-      }
+      await authService.signOut();
       setUser(null);
     } catch (reason) {
       const message = toErrorMessage(reason);
@@ -90,15 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
-
-  const enterDevelopmentPreview = useCallback(async () => {
-    if (!import.meta.env.DEV) return false;
-    const { devMockAuthService } =
-      await import("../services/devMockAuthService");
-    await authenticate(() => devMockAuthService.signIn("", ""));
-    return true;
-  }, [authenticate]);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -108,17 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       register,
       signOut,
-      enterDevelopmentPreview,
     }),
-    [
-      user,
-      isLoading,
-      error,
-      signIn,
-      register,
-      signOut,
-      enterDevelopmentPreview,
-    ],
+    [user, isLoading, error, signIn, register, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

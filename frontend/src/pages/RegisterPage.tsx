@@ -5,7 +5,6 @@ import { useAuth } from "../hooks/useAuth";
 
 export function RegisterPage() {
   const { user, register, isLoading, error } = useAuth();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState("");
@@ -17,11 +16,13 @@ export function RegisterPage() {
     event.preventDefault();
     setLocalError("");
     try {
-      await register(name, email, password);
+      await register(email, password);
       navigate("/dashboard", { replace: true });
-    } catch {
+    } catch (reason) {
       setLocalError(
-        "Registration is unavailable until authentication is connected.",
+        reason instanceof Error
+          ? reason.message
+          : "Could not create your account.",
       );
     }
   }
@@ -32,15 +33,6 @@ export function RegisterPage() {
       title="Create your account"
     >
       <form className="auth-form" onSubmit={handleSubmit}>
-        <label htmlFor="register-name">Full name</label>
-        <input
-          autoComplete="name"
-          id="register-name"
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Alex Morgan"
-          required
-          value={name}
-        />
         <label htmlFor="register-email">Email address</label>
         <input
           autoComplete="email"
@@ -55,6 +47,7 @@ export function RegisterPage() {
         <input
           autoComplete="new-password"
           id="register-password"
+          maxLength={72}
           minLength={8}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="At least 8 characters"

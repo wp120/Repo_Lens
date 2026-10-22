@@ -6,9 +6,8 @@ export interface AuthContextValue {
   isLoading: boolean;
   error: string | null;
   signIn(email: string, password: string): Promise<void>;
-  register(name: string, email: string, password: string): Promise<void>;
+  register(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
-  enterDevelopmentPreview(): Promise<boolean>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

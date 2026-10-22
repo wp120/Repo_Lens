@@ -4,7 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { AuthPageFrame } from "../components/AuthPageFrame";
 
 export function LoginPage() {
-  const { user, signIn, enterDevelopmentPreview, isLoading, error } = useAuth();
+  const { user, signIn, isLoading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState("");
@@ -21,21 +21,10 @@ export function LoginPage() {
     try {
       await signIn(email, password);
       navigate(destination, { replace: true });
-    } catch {
+    } catch (reason) {
       setLocalError(
-        "Sign-in is unavailable until authentication is connected.",
+        reason instanceof Error ? reason.message : "Could not sign in.",
       );
-    }
-  }
-
-  async function handlePreview() {
-    setLocalError("");
-    try {
-      if (await enterDevelopmentPreview()) {
-        navigate("/dashboard", { replace: true });
-      }
-    } catch {
-      setLocalError("Development preview could not be started.");
     }
   }
 
@@ -78,21 +67,6 @@ export function LoginPage() {
           {isLoading ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      {import.meta.env.DEV && (
-        <div className="preview-panel">
-          <div>
-            <strong>Preview the dashboard</strong>
-            <span>Development-only sample workspace</span>
-          </div>
-          <button
-            className="button-secondary"
-            onClick={handlePreview}
-            type="button"
-          >
-            Open preview
-          </button>
-        </div>
-      )}
       <p className="auth-switch">
         New to RepoLens? <Link to="/register">Create an account</Link>
       </p>

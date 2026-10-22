@@ -9,13 +9,13 @@ RepoLens is a workspace for exploring and understanding software repositories. T
 
 ## Getting started
 
-1. Install workspace dependencies:
+1. Copy the repository-root `.env.example` to the repository-root `.env` and set a unique `SESSION_SECRET` using a secure random generator (at least 32 characters). This single root `.env` is used by Docker Compose, Prisma, the backend, and Vite; keep it private.
+
+2. Install workspace dependencies:
 
    ```sh
    npm run bootstrap
    ```
-
-2. Copy `.env.example` to `.env` and adjust values if needed.
 
 3. Start the local services:
 
@@ -23,13 +23,15 @@ RepoLens is a workspace for exploring and understanding software repositories. T
    docker compose up -d
    ```
 
+   PostgreSQL uses host port `5433` to avoid colliding with local PostgreSQL installations; Redis uses host port `6380`.
+
 4. Run the frontend and backend in development mode:
 
    ```sh
    npm run dev
    ```
 
-   The Vite frontend is available at <http://localhost:5173> and the API at <http://localhost:3001>. The health endpoint is `GET http://localhost:3001/api/health`.
+   The Vite frontend is available at <http://127.0.0.1:5173> and the API at <http://127.0.0.1:3001>. The health endpoint is `GET http://127.0.0.1:3001/api/health`.
 
 ## Development commands
 
@@ -50,7 +52,13 @@ Stop local services with `docker compose down`. PostgreSQL data is stored in the
 
 ## Frontend preview
 
-In development, open `/login` and choose **Open preview** to view the sample dashboard. The preview session and repository/conversation data are development-only and do not connect to GitHub or the backend. Production builds do not include the preview login or sample repository data. The repository dialog validates GitHub URL format, but repository checks, branch resolution, indexing, and account/quota enforcement require future API work; chat and authentication are not connected yet.
+Development-only repository/conversation sample data can be shown after signing in. It does not connect to GitHub or the backend. The repository dialog validates GitHub URL format, but repository checks, branch resolution, indexing, and account/quota enforcement require future API work; chat is not connected yet.
+
+## Authentication
+
+Email/password registration and login use server-side sessions stored in Redis. The session cookie is HTTP-only; passwords and session identifiers are never stored by the frontend. Authentication requests use a session-bound CSRF token and are rate-limited. `FRONTEND_ORIGIN` must exactly match the browser origin. For a cross-site production deployment, configure `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=none` and serve both sites over HTTPS.
+
+The API routes are `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. The frontend requests a CSRF token from `GET /api/auth/csrf` before state-changing authentication calls.
 
 ## Database and Prisma
 

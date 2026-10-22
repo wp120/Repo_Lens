@@ -1,3 +1,4 @@
+import "./loadEnv.js";
 import { Redis } from "ioredis";
 
 export function createRedisConnection(): Redis {

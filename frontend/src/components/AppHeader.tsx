@@ -8,7 +8,7 @@ export function AppHeader({
 }: {
   onToggleSidebar: () => void;
 }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isLoading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [githubConnectedPreview, setGitHubConnectedPreview] = useState(false);
@@ -92,8 +92,13 @@ export function AppHeader({
               <span>{user?.email}</span>
             </div>
             {message && <p className="menu-error">{message}</p>}
-            <button onClick={handleLogout} role="menuitem" type="button">
-              Sign out
+            <button
+              disabled={isLoading}
+              onClick={handleLogout}
+              role="menuitem"
+              type="button"
+            >
+              {isLoading ? "Signing out…" : "Sign out"}
             </button>
           </div>
         )}
