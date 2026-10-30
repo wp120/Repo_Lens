@@ -45,6 +45,7 @@ model BranchIndex {
   repository       Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   userAccess       UserBranchAccess[]
   ingestions       UserBranchIngestion[]
+  codeChunks       CodeChunk[]
 
   @@unique([repositoryId, branchName])
   @@map("branch_indexes")
@@ -72,4 +73,23 @@ model UserBranchIngestion {
   @@id([userId, branchIndexId])
   @@index([userId])
   @@map("user_branch_ingestions")
+}
+
+model CodeChunk {
+  id            String                      @id @default(uuid()) @db.Uuid
+  branchIndexId String                      @map("branch_index_id") @db.Uuid
+  filePath      String                      @map("file_path") @db.VarChar(1024)
+  content       String                      @db.Text
+  startLine     Int                         @map("start_line")
+  endLine       Int                         @map("end_line")
+  language      String                      @db.VarChar(64)
+  symbolName    String?                     @map("symbol_name") @db.VarChar(255)
+  commitSha     String                      @map("commit_sha") @db.VarChar(40)
+  embedding     Unsupported("vector(1024)")
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  branchIndex   BranchIndex                 @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
+
+  @@index([branchIndexId])
+  @@index([branchIndexId, filePath])
+  @@map("code_chunks")
 }

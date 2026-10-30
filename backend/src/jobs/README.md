@@ -13,6 +13,11 @@ and can be overridden with positive integer environment variables:
 | `REPOLENS_MAX_REPOSITORY_SIZE_KB`     |   102400 | GitHub repository size in KB                                       |
 | `REPOLENS_MAX_INDEXABLE_FILES`        |    10000 | Tracked source files in a branch                                   |
 | `REPOLENS_MAX_INDEXABLE_SOURCE_BYTES` | 52428800 | Combined GitHub-reported size of tracked source files              |
+| `REPOLENS_MAX_FILE_SIZE_BYTES`        |  1048576 | Maximum allowed size in bytes for an individual indexable file     |
+| `REPOLENS_MAX_CHUNK_CHARS`            |     2500 | Maximum character length of a code chunk                           |
+| `REPOLENS_MIN_CHUNK_CHARS`            |       50 | Minimum character threshold before combining small units           |
+| `REPOLENS_CHUNK_OVERLAP_LINES`        |        3 | Line overlap for bounded fallback line-based chunking              |
 
-GitHub tree truncation and missing size metadata fail closed. The indexing
-worker must repeat applicable file and content limits while processing.
+GitHub tree truncation triggers a non-recursive traversal fallback; if the repository
+cannot be completely and reliably validated, ingestion fails closed. The indexing
+worker repeats applicable file, individual file, and content limits while processing.

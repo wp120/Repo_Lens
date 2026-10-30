@@ -215,12 +215,20 @@ export async function getGitHubJson<T>(
 ): Promise<T> {
   let response: Response;
   try {
+    const token = process.env.GITHUB_TOKEN;    
+    
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "RepoLens",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     response = await fetcher(url, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "RepoLens",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
+      headers,
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
