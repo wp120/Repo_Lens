@@ -7,6 +7,7 @@ import {
   startIngestionWorker,
   closeIngestionWorker,
 } from "./jobs/ingestionWorker.js";
+import { closeVoyageRateLimiter } from "./services/voyageRateLimiter.js";
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -24,6 +25,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         prisma.$disconnect(),
         closeIngestionQueue(),
         closeIngestionWorker(),
+        closeVoyageRateLimiter(),
       ]).finally(() => process.exit(0));
     });
   });

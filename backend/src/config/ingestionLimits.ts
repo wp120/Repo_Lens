@@ -19,6 +19,7 @@ export const ingestionLimits = {
   indexableSourceBytes: positiveInteger("REPOLENS_MAX_INDEXABLE_SOURCE_BYTES", 52428800),
   maxFileSizeBytes: positiveInteger("REPOLENS_MAX_FILE_SIZE_BYTES", 1048576),
   maxChunkChars: positiveInteger("REPOLENS_MAX_CHUNK_CHARS", 2500),
+  maxTokensPerChunk: positiveInteger("REPOLENS_MAX_TOKENS_PER_CHUNK", 2000),
   minChunkChars: positiveInteger("REPOLENS_MIN_CHUNK_CHARS", 50),
   chunkOverlapLines: positiveInteger("REPOLENS_CHUNK_OVERLAP_LINES", 3),
 };

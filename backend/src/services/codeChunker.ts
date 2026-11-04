@@ -1,6 +1,7 @@
 import { Parser, Language } from "web-tree-sitter";
 import { getWasmPath } from "tree-sitter-wasm";
 import { ingestionLimits } from "../config/ingestionLimits.js";
+import { estimateVoyageTokens } from "./tokenEstimator.js";
 
 export interface CodeChunk {
   filePath: string;
@@ -14,6 +15,7 @@ export interface CodeChunk {
 
 export interface ChunkerConfig {
   maxChunkChars?: number;
+  maxTokensPerChunk?: number;
   minChunkChars?: number;
   chunkOverlapLines?: number;
 }
@@ -159,6 +161,8 @@ export async function chunkSourceFile(
   if (isBinaryContent(content)) return [];
 
   const maxChars = config.maxChunkChars ?? ingestionLimits.maxChunkChars;
+  const maxTokens =
+    config.maxTokensPerChunk ?? ingestionLimits.maxTokensPerChunk;
   const minChars = config.minChunkChars ?? ingestionLimits.minChunkChars;
   const { language, grammar } = detectLanguage(filePath);
 
@@ -176,6 +180,7 @@ export async function chunkSourceFile(
             commitSha,
             maxChars,
             minChars,
+            maxTokens,
           );
           if (chunks.length > 0) {
             return deduplicateAndValidateChunks(chunks);
@@ -195,6 +200,7 @@ export async function chunkSourceFile(
     commitSha,
     maxChars,
     config.chunkOverlapLines ?? ingestionLimits.chunkOverlapLines,
+    maxTokens,
   );
   return deduplicateAndValidateChunks(fallbackChunks);
 }
@@ -265,6 +271,7 @@ function chunkWithTreeSitter(
   commitSha: string,
   maxChars: number,
   minChars: number,
+  maxTokens: number,
 ): CodeChunk[] {
   const chunks: CodeChunk[] = [];
   const lines = sourceCode.split("\n");
@@ -327,13 +334,31 @@ function chunkWithTreeSitter(
       if (smallUnitCharCount + nodeText.length > maxChars) {
         flushSmallUnits();
       }
+      const bundledText = [...smallUnitNodes, node]
+        .map((unit) => unit.text.trim())
+        .join("\n");
+      if (estimateVoyageTokens(bundledText) > maxTokens) {
+        flushSmallUnits();
+        const split = chunkTextByLines(
+          nodeText,
+          node.startPosition.row + 1,
+          filePath,
+          language,
+          commitSha,
+          maxChars,
+          extractSymbolName(targetNode),
+          maxTokens,
+        );
+        chunks.push(...split);
+        return;
+      }
       smallUnitNodes.push(node);
       smallUnitCharCount += nodeText.length;
       return;
     }
 
     // Node fits within chunk limit
-    if (nodeText.length <= maxChars) {
+    if (nodeFitsBudgets(nodeText, maxChars, maxTokens)) {
       flushSmallUnits();
       chunks.push({
         filePath,
@@ -359,6 +384,7 @@ function chunkWithTreeSitter(
         commitSha,
         maxChars,
         chunks,
+        maxTokens,
       );
       return;
     }
@@ -375,6 +401,7 @@ function chunkWithTreeSitter(
         commitSha,
         maxChars,
         chunks,
+        maxTokens,
       );
       return;
     }
@@ -389,6 +416,7 @@ function chunkWithTreeSitter(
       commitSha,
       maxChars,
       extractSymbolName(targetNode),
+      maxTokens,
     );
     chunks.push(...nodeLines);
   }
@@ -398,7 +426,27 @@ function chunkWithTreeSitter(
   }
 
   flushSmallUnits();
-  return chunks;
+  const validatedChunks: CodeChunk[] = [];
+  for (const chunk of chunks) {
+    if (nodeFitsBudgets(chunk.content, maxChars, maxTokens)) {
+      validatedChunks.push(chunk);
+      continue;
+    }
+    for (const part of splitOversizedText(
+      chunk.content,
+      chunk.startLine,
+      maxChars,
+      maxTokens,
+    )) {
+      validatedChunks.push({
+        ...chunk,
+        content: part.content,
+        startLine: part.startLine,
+        endLine: part.endLine,
+      });
+    }
+  }
+  return validatedChunks;
 }
 
 function chunkOversizedContainer(
@@ -410,6 +458,7 @@ function chunkOversizedContainer(
   commitSha: string,
   maxChars: number,
   outputChunks: CodeChunk[],
+  maxTokens: number,
 ): void {
   const containerName = extractSymbolName(targetContainer) ?? "Anonymous";
   const bodyNode =
@@ -471,6 +520,7 @@ function chunkOversizedContainer(
         commitSha,
         maxChars,
         outputChunks,
+        maxTokens,
         qualifiedName,
       );
     } else {
@@ -482,6 +532,7 @@ function chunkOversizedContainer(
         commitSha,
         maxChars,
         qualifiedName,
+        maxTokens,
       );
       outputChunks.push(...memberChunks);
     }
@@ -497,6 +548,7 @@ function chunkOversizedFunction(
   commitSha: string,
   maxChars: number,
   outputChunks: CodeChunk[],
+  maxTokens: number,
   overrideName?: string,
 ): void {
   const fnName = overrideName ?? extractSymbolName(targetFn) ?? "function";
@@ -514,6 +566,7 @@ function chunkOversizedFunction(
       commitSha,
       maxChars,
       fnName,
+      maxTokens,
     );
     outputChunks.push(...chunks);
     return;
@@ -557,19 +610,38 @@ function chunkOversizedFunction(
     const stmtText = stmt.text.trim();
     if (!stmtText || stmtText === "{" || stmtText === "}") continue;
 
-    if (stmtText.length > maxChars) {
+    if (!nodeFitsBudgets(stmtText, maxChars, maxTokens)) {
       flushStatements();
-      const subChunks = chunkTextByLines(
-        stmtText,
-        stmt.startPosition.row + 1,
-        filePath,
-        language,
-        commitSha,
-        maxChars,
-        `${fnName} (part ${partNumber++})`,
-      );
+      const nestedStatements = findNestedStatements(stmt);
+      const subChunks =
+        nestedStatements.length > 0
+          ? chunkStatementsAtBudgets(
+              nestedStatements,
+              sourceCode,
+              filePath,
+              language,
+              commitSha,
+              maxChars,
+              maxTokens,
+              `${fnName} (part ${partNumber++})`,
+            )
+          : chunkTextByLines(
+              stmtText,
+              stmt.startPosition.row + 1,
+              filePath,
+              language,
+              commitSha,
+              maxChars,
+              `${fnName} (part ${partNumber++})`,
+              maxTokens,
+            );
       outputChunks.push(...subChunks);
-    } else if (currentCharCount + stmtText.length > maxChars) {
+    } else if (
+      currentCharCount + stmtText.length > maxChars ||
+      estimateVoyageTokens(
+        sourceTextForNodes(currentStatements.concat(stmt), sourceCode),
+      ) > maxTokens
+    ) {
       flushStatements();
       currentStatements.push(stmt);
       currentCharCount = stmtText.length;
@@ -590,16 +662,23 @@ function chunkTextByLines(
   commitSha: string,
   maxChars: number,
   symbolName: string | null,
+  maxTokens: number,
 ): CodeChunk[] {
   const lines = text.split("\n");
   const chunks: CodeChunk[] = [];
+  const maxSliceChars = Math.min(maxChars, maxTokens * 4);
 
   let startIdx = 0;
   let currentChars = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const lineLen = lines[i].length + 1;
-    if (currentChars + lineLen > maxChars && i > startIdx) {
+    if (
+      (currentChars + lineLen > maxSliceChars ||
+        estimateVoyageTokens(lines.slice(startIdx, i + 1).join("\n")) >
+          maxTokens) &&
+      i > startIdx
+    ) {
       const slice = lines.slice(startIdx, i).join("\n").trim();
       if (slice) {
         chunks.push({
@@ -634,7 +713,195 @@ function chunkTextByLines(
     }
   }
 
+  const tokenSafeChunks: CodeChunk[] = [];
+  for (const chunk of chunks) {
+    if (nodeFitsBudgets(chunk.content, maxChars, maxTokens)) {
+      tokenSafeChunks.push(chunk);
+      continue;
+    }
+
+    const split = splitOversizedText(
+      chunk.content,
+      chunk.startLine,
+      maxSliceChars,
+      maxTokens,
+    );
+    for (const part of split) {
+      tokenSafeChunks.push({
+        ...chunk,
+        content: part.content,
+        startLine: part.startLine,
+        endLine: part.endLine,
+      });
+    }
+  }
+
+  return tokenSafeChunks;
+}
+
+function nodeFitsBudgets(
+  text: string,
+  maxChars: number,
+  maxTokens: number,
+): boolean {
+  return text.length <= maxChars && estimateVoyageTokens(text) <= maxTokens;
+}
+
+function sourceTextForNodes(nodes: AstNode[], sourceCode: string): string {
+  if (nodes.length === 0) return "";
+  const lines = sourceCode.split("\n");
+  const startLine = nodes[0].startPosition.row;
+  const endLine =
+    nodes[nodes.length - 1].endPosition.row + 1;
+  return lines.slice(startLine, endLine).join("\n").trim();
+}
+
+function findNestedStatements(node: AstNode): AstNode[] {
+  const nestedBodies = node.children.filter(
+    (child) =>
+      child.type.includes("block") ||
+      child.type.includes("body") ||
+      child.type.includes("suite"),
+  );
+
+  for (const body of nestedBodies) {
+    const statements = body.children.filter(
+      (child) =>
+        child.text.trim() !== "" &&
+        child.text.trim() !== "{" &&
+        child.text.trim() !== "}",
+    );
+    if (statements.length > 1) return statements;
+  }
+
+  return [];
+}
+
+function chunkStatementsAtBudgets(
+  statements: AstNode[],
+  sourceCode: string,
+  filePath: string,
+  language: string,
+  commitSha: string,
+  maxChars: number,
+  maxTokens: number,
+  symbolName: string,
+): CodeChunk[] {
+  const chunks: CodeChunk[] = [];
+  let group: AstNode[] = [];
+
+  const flush = (): void => {
+    if (group.length === 0) return;
+    const text = sourceTextForNodes(group, sourceCode);
+    if (text) {
+      chunks.push({
+        filePath,
+        content: text,
+        startLine: group[0].startPosition.row + 1,
+        endLine: group[group.length - 1].endPosition.row + 1,
+        language,
+        symbolName,
+        commitSha,
+      });
+    }
+    group = [];
+  };
+
+  for (const statement of statements) {
+    const text = statement.text.trim();
+    if (!nodeFitsBudgets(text, maxChars, maxTokens)) {
+      flush();
+      const nested = findNestedStatements(statement);
+      if (nested.length > 0) {
+        chunks.push(
+          ...chunkStatementsAtBudgets(
+            nested,
+            sourceCode,
+            filePath,
+            language,
+            commitSha,
+            maxChars,
+            maxTokens,
+            symbolName,
+          ),
+        );
+      } else {
+        chunks.push(
+          ...chunkTextByLines(
+            text,
+            statement.startPosition.row + 1,
+            filePath,
+            language,
+            commitSha,
+            maxChars,
+            symbolName,
+            maxTokens,
+          ),
+        );
+      }
+      continue;
+    }
+
+    const candidate = sourceTextForNodes([...group, statement], sourceCode);
+    if (
+      group.length > 0 &&
+      !nodeFitsBudgets(candidate, maxChars, maxTokens)
+    ) {
+      flush();
+    }
+    group.push(statement);
+  }
+  flush();
   return chunks;
+}
+
+interface SplitTextPart {
+  content: string;
+  startLine: number;
+  endLine: number;
+}
+
+function splitOversizedText(
+  text: string,
+  baseLine: number,
+  maxChars: number,
+  maxTokens: number,
+): SplitTextPart[] {
+  const parts: SplitTextPart[] = [];
+  let offset = 0;
+
+  while (offset < text.length) {
+    let end = Math.min(text.length, offset + Math.min(maxChars, maxTokens * 4));
+    if (end < text.length) {
+      const window = text.slice(offset, end);
+      const whitespace = Math.max(
+        window.lastIndexOf(" "),
+        window.lastIndexOf("\t"),
+      );
+      if (whitespace >= Math.floor(window.length / 2)) {
+        end = offset + whitespace + 1;
+      }
+    }
+    if (end <= offset) end = offset + 1;
+
+    const partText = text.slice(offset, end);
+    const prefix = text.slice(0, offset);
+    const partPrefixLines = partText.includes("\n")
+      ? partText.slice(0, partText.lastIndexOf("\n")).split("\n").length
+      : 0;
+    parts.push({
+      content: partText,
+      startLine: baseLine + prefix.split("\n").length - 1,
+      endLine:
+        baseLine +
+        prefix.split("\n").length -
+        1 +
+        partPrefixLines,
+    });
+    offset = end;
+  }
+
+  return parts;
 }
 
 export function chunkByLines(
@@ -644,6 +911,7 @@ export function chunkByLines(
   commitSha: string,
   maxChars: number,
   overlapLines: number = 0,
+  maxTokens: number = ingestionLimits.maxTokensPerChunk,
 ): CodeChunk[] {
   const lines = content.split("\n");
   const chunks: CodeChunk[] = [];
@@ -655,7 +923,12 @@ export function chunkByLines(
 
     while (endIdx < lines.length) {
       const lineLen = lines[endIdx].length + 1;
-      if (chars + lineLen > maxChars && endIdx > startIdx) {
+      if (
+        (chars + lineLen > maxChars ||
+          estimateVoyageTokens(lines.slice(startIdx, endIdx + 1).join("\n")) >
+            maxTokens) &&
+        endIdx > startIdx
+      ) {
         break;
       }
       chars += lineLen;
@@ -682,20 +955,35 @@ export function chunkByLines(
     startIdx += step;
   }
 
-  return chunks;
+  const validatedChunks: CodeChunk[] = [];
+  for (const chunk of chunks) {
+    if (nodeFitsBudgets(chunk.content, maxChars, maxTokens)) {
+      validatedChunks.push(chunk);
+      continue;
+    }
+    for (const part of splitOversizedText(
+      chunk.content,
+      chunk.startLine,
+      maxChars,
+      maxTokens,
+    )) {
+      validatedChunks.push({
+        ...chunk,
+        content: part.content,
+        startLine: part.startLine,
+        endLine: part.endLine,
+      });
+    }
+  }
+  return validatedChunks;
 }
 
 function deduplicateAndValidateChunks(chunks: CodeChunk[]): CodeChunk[] {
-  const seen = new Set<string>();
   const validated: CodeChunk[] = [];
 
   for (const chunk of chunks) {
     if (!chunk.content || !chunk.content.trim()) continue;
     if (chunk.startLine > chunk.endLine) continue;
-
-    const key = `${chunk.filePath}:${chunk.startLine}-${chunk.endLine}:${chunk.content.slice(0, 80)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
 
     validated.push(chunk);
   }

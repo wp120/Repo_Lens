@@ -6,6 +6,7 @@ import {
   isBinaryContent,
   detectLanguage,
 } from "../services/codeChunker.js";
+import { estimateVoyageTokens } from "../services/tokenEstimator.js";
 
 test("detectLanguage correctly maps file extensions to language names and grammars", () => {
   assert.deepEqual(detectLanguage("src/index.ts"), {
@@ -162,4 +163,66 @@ test("chunkByLines handles fallback line-based chunking with exact 1-based lines
     assert.ok(c.startLine <= c.endLine);
     assert.ok(c.content.length > 0);
   }
+});
+
+test("normal function remains a single chunk under the token limit", async () => {
+  const code = [
+    "function add(a: number, b: number) {",
+    "  return a + b;",
+    "}",
+  ].join("\n");
+
+  const chunks = await chunkSourceFile("src/add.ts", code, "sha1", {
+    maxChunkChars: 1000,
+    maxTokensPerChunk: 100,
+  });
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].startLine, 1);
+  assert.equal(chunks[0].endLine, 3);
+});
+
+test("long functions split at statements and stay within the token budget", async () => {
+  const statements = Array.from(
+    { length: 12 },
+    (_, i) => `  const step${i} = processStep(${i});`,
+  );
+  const code = ["function processAll() {", ...statements, "  return true;", "}"].join(
+    "\n",
+  );
+
+  const chunks = await chunkSourceFile("src/process.ts", code, "sha1", {
+    maxChunkChars: 1000,
+    maxTokensPerChunk: 12,
+  });
+
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((chunk) => estimateVoyageTokens(chunk.content) <= 12));
+});
+
+test("oversized statements and very long lines do not lose source text", async () => {
+  const longLine = `  const payload = "${"x".repeat(500)}";`;
+  const code = ["function build() {", longLine, "  return payload;", "}"].join("\n");
+
+  const chunks = await chunkSourceFile("src/long.ts", code, "sha1", {
+    maxChunkChars: 1000,
+    maxTokensPerChunk: 20,
+  });
+
+  assert.ok(chunks.length > 1);
+  for (const chunk of chunks) {
+    assert.ok(chunk.content.length > 0);
+    assert.ok(estimateVoyageTokens(chunk.content) <= 20);
+    assert.equal(chunk.startLine >= 1, true);
+    assert.equal(chunk.endLine >= chunk.startLine, true);
+  }
+  const longLineXCount = chunks.reduce(
+    (count, chunk) => count + (chunk.content.match(/x/g)?.length ?? 0),
+    0,
+  );
+  assert.equal(
+    longLineXCount,
+    500,
+    chunks.map((chunk) => `${chunk.startLine}-${chunk.endLine}:${chunk.content.length}:${(chunk.content.match(/x/g) ?? []).length}`).join("\n"),
+  );
 });

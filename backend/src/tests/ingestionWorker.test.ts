@@ -8,6 +8,7 @@ import type {
   CodeChunkStore,
   StorableCodeChunk,
 } from "../services/codeChunkStore.js";
+import { VoyageRateLimitTimeoutError } from "../services/voyageRateLimiter.js";
 
 interface FakeBranchIndex {
   id: string;
@@ -281,4 +282,42 @@ test("processIngestionJob cleans up chunks and marks failed on error", async () 
   assert.deepEqual(prisma.statusHistory, ["ingesting", "failed"]);
   assert.ok(chunkStore.deletedForBranch.includes("branch-1"));
   assert.equal(chunkStore.savedChunks.length, 0);
+});
+
+test("processIngestionJob marks the branch failed when embedding rate-limit wait times out", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore();
+  const deps = createTestDependencies({ prisma, chunkStore });
+  deps.embedder = async () => {
+    throw new VoyageRateLimitTimeoutError(
+      "Voyage embedding rate limiter timed out after 120000ms waiting for capacity.",
+    );
+  };
+
+  await assert.rejects(
+    processIngestionJob(
+      {
+        branchIndexId: "branch-1",
+        repositoryId: "repo-1",
+        branchName: "main",
+        attempt: 1,
+      },
+      deps,
+    ),
+    (err: unknown) => err instanceof VoyageRateLimitTimeoutError,
+  );
+
+  assert.equal(prisma.branch.status, "failed");
+  assert.ok(prisma.branch.lastError?.includes("timed out after 120000ms"));
+  assert.deepEqual(prisma.statusHistory, ["ingesting", "failed"]);
+  assert.ok(chunkStore.deletedForBranch.includes("branch-1"));
 });

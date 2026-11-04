@@ -1,4 +1,12 @@
-import { VoyageAIClient } from "voyageai";
+import { VoyageAIClient, VoyageAIError } from "voyageai";
+import { voyageRateLimits } from "../config/voyageRateLimits.js";
+import {
+  acquireVoyageCapacity,
+  VoyageRateLimitInvalidError,
+} from "./voyageRateLimiter.js";
+import { estimateVoyageTokens } from "./tokenEstimator.js";
+
+export { estimateVoyageTokens } from "./tokenEstimator.js";
 
 export class VoyageEmbeddingError extends Error {
   constructor(
@@ -17,26 +25,80 @@ export const VOYAGE_DEFAULT_BATCH_SIZE = 100;
 export const VOYAGE_MAX_RETRIES = 3;
 export const VOYAGE_INITIAL_BACKOFF_MS = 300;
 
+export interface VoyageEmbedRequest {
+  model: string;
+  input: string[];
+  inputType?: "query" | "document";
+  outputDimension?: number;
+  outputDtype?: "float";
+  truncation?: boolean;
+}
+
 export interface VoyageEmbeddingConfig {
   apiKey?: string;
   maxBatchSize?: number;
   maxRetries?: number;
   initialBackoffMs?: number;
+  maxBackoffMs?: number;
+  maxTokensPerRequest?: number;
+  acquireCapacity?: (estimatedTokens: number) => Promise<void>;
   client?: {
-    embed: (request: {
-      model: string;
-      input: string[];
-      inputType?: "query" | "document";
-      outputDimension?: number;
-      outputDtype?: "float";
-      truncation?: boolean;
-    }) => Promise<{
+    embed: (
+      request: VoyageEmbedRequest,
+      requestOptions?: { maxRetries?: number },
+    ) => Promise<{
       data?: Array<{
         embedding?: number[];
         index?: number;
       }>;
     }>;
   };
+}
+
+export interface VoyageEmbeddingBatch {
+  texts: string[];
+  estimatedTokens: number;
+}
+
+export function buildVoyageEmbeddingBatches(
+  texts: string[],
+  options: {
+    maxInputsPerRequest: number;
+    maxTokensPerRequest: number;
+  },
+): VoyageEmbeddingBatch[] {
+  const batches: VoyageEmbeddingBatch[] = [];
+  let current: VoyageEmbeddingBatch = { texts: [], estimatedTokens: 0 };
+
+  for (const text of texts) {
+    const tokens = estimateVoyageTokens(text);
+    if (tokens > options.maxTokensPerRequest) {
+      throw new VoyageRateLimitInvalidError(
+        `An embedding input of ${text.length} characters (~${tokens} estimated tokens) exceeds the per-request budget of ${options.maxTokensPerRequest} estimated tokens. Inputs are not truncated or split because each embedding must map to one CodeChunk.`,
+      );
+    }
+
+    const wouldExceedCount =
+      current.texts.length >= options.maxInputsPerRequest;
+    const wouldExceedTokens =
+      current.estimatedTokens + tokens > options.maxTokensPerRequest;
+    if (
+      current.texts.length > 0 &&
+      (wouldExceedCount || wouldExceedTokens)
+    ) {
+      batches.push(current);
+      current = { texts: [], estimatedTokens: 0 };
+    }
+
+    current.texts.push(text);
+    current.estimatedTokens += tokens;
+  }
+
+  if (current.texts.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
 }
 
 export function getVoyageApiKey(): string {
@@ -53,28 +115,44 @@ export async function generateVoyageEmbeddings(
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const maxBatchSize = Math.min(
-    Math.max(1, config.maxBatchSize ?? VOYAGE_DEFAULT_BATCH_SIZE),
-    128,
-  );
-  const maxRetries = config.maxRetries ?? VOYAGE_MAX_RETRIES;
-  const initialBackoffMs = config.initialBackoffMs ?? VOYAGE_INITIAL_BACKOFF_MS;
+  const maxBatchSize = config.maxBatchSize ?? voyageRateLimits.maxInputsPerRequest;
+  if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize <= 0) {
+    throw new VoyageEmbeddingError(
+      "Voyage embedding maxBatchSize must be a positive integer.",
+      500,
+    );
+  }
+
+  const maxTokensPerRequest =
+    config.maxTokensPerRequest ?? voyageRateLimits.maxTokensPerRequest;
+  const maxRetries = config.maxRetries ?? voyageRateLimits.maxRetries;
+  const initialBackoffMs =
+    config.initialBackoffMs ?? voyageRateLimits.initialBackoffMs;
+  const maxBackoffMs = config.maxBackoffMs ?? voyageRateLimits.maxBackoffMs;
+  const acquireCapacity = config.acquireCapacity ?? acquireVoyageCapacity;
 
   const client =
     config.client ??
     new VoyageAIClient({
       apiKey: config.apiKey ?? getVoyageApiKey(),
+      maxRetries: 0,
     });
+
+  const batches = buildVoyageEmbeddingBatches(texts, {
+    maxInputsPerRequest: maxBatchSize,
+    maxTokensPerRequest,
+  });
 
   const allEmbeddings: number[][] = [];
 
-  for (let i = 0; i < texts.length; i += maxBatchSize) {
-    const batch = texts.slice(i, i + maxBatchSize);
+  for (const batch of batches) {
     const batchEmbeddings = await embedBatchWithRetry(
       client,
       batch,
       maxRetries,
       initialBackoffMs,
+      maxBackoffMs,
+      acquireCapacity,
     );
     allEmbeddings.push(...batchEmbeddings);
   }
@@ -82,29 +160,93 @@ export async function generateVoyageEmbeddings(
   return allEmbeddings;
 }
 
+function getErrorStatusCode(error: unknown): number | undefined {
+  if (error instanceof VoyageAIError && error.statusCode !== undefined) {
+    return error.statusCode;
+  }
+
+  if (typeof error === "object" && error !== null && "statusCode" in error) {
+    const statusCode = (error as { statusCode: unknown }).statusCode;
+    if (typeof statusCode === "number") {
+      return statusCode;
+    }
+  }
+
+  return undefined;
+}
+
+function readHeader(headers: unknown, name: string): string | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    const value = (headers as { get: (key: string) => string | null }).get(
+      name,
+    );
+    return value ?? undefined;
+  }
+
+  const record = headers as Record<string, unknown>;
+  const direct = record[name] ?? record["Retry-After"] ?? record["retry-after"];
+  return typeof direct === "string" ? direct : undefined;
+}
+
+function getRetryAfterMs(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const rawResponse = (error as { rawResponse?: { headers?: unknown } })
+    .rawResponse;
+  const value = readHeader(rawResponse?.headers, "retry-after");
+  if (!value) {
+    return undefined;
+  }
+
+  const asSeconds = Number(value);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return asSeconds * 1000;
+  }
+
+  const asDate = Date.parse(value);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, asDate - Date.now());
+  }
+
+  return undefined;
+}
+
 async function embedBatchWithRetry(
   client: NonNullable<VoyageEmbeddingConfig["client"]>,
-  batch: string[],
+  batch: VoyageEmbeddingBatch,
   maxRetries: number,
   initialBackoffMs: number,
+  maxBackoffMs: number,
+  acquireCapacity: (estimatedTokens: number) => Promise<void>,
 ): Promise<number[][]> {
   let attempt = 0;
 
   while (true) {
+    await acquireCapacity(batch.estimatedTokens);
+
     try {
-      const response = await client.embed({
-        model: VOYAGE_MODEL,
-        input: batch,
-        inputType: "document",
-        outputDimension: VOYAGE_DIMENSIONS,
-        outputDtype: "float",
-        truncation: false,
-      });
+      const response = await client.embed(
+        {
+          model: VOYAGE_MODEL,
+          input: batch.texts,
+          inputType: "document",
+          outputDimension: VOYAGE_DIMENSIONS,
+          outputDtype: "float",
+          truncation: false,
+        },
+        { maxRetries: 0 },
+      );
 
       const data = response.data;
-      if (!Array.isArray(data) || data.length !== batch.length) {
+      if (!Array.isArray(data) || data.length !== batch.texts.length) {
         throw new VoyageEmbeddingError(
-          `Voyage AI returned an incomplete embedding batch (expected ${batch.length}, received ${data?.length ?? 0}).`,
+          `Voyage AI returned an incomplete embedding batch (expected ${batch.texts.length}, received ${data?.length ?? 0}).`,
           502,
         );
       }
@@ -137,18 +279,9 @@ async function embedBatchWithRetry(
         throw error;
       }
 
-      const isRateLimit =
-        typeof error === "object" &&
-        error !== null &&
-        "status" in error &&
-        (error as { status: number }).status === 429;
-
-      const isAuthError =
-        typeof error === "object" &&
-        error !== null &&
-        "status" in error &&
-        ((error as { status: number }).status === 401 ||
-          (error as { status: number }).status === 403);
+      const statusCode = getErrorStatusCode(error);
+      const isRateLimit = statusCode === 429;
+      const isAuthError = statusCode === 401 || statusCode === 403;
 
       if (isAuthError) {
         throw new VoyageEmbeddingError(
@@ -171,8 +304,17 @@ async function embedBatchWithRetry(
       }
 
       attempt += 1;
+      const exponential =
+        Math.min(
+          maxBackoffMs,
+          initialBackoffMs * Math.pow(2, attempt - 1),
+        ) +
+        Math.random() * 100;
+      const retryAfterMs = isRateLimit ? getRetryAfterMs(error) : undefined;
       const delay =
-        initialBackoffMs * Math.pow(2, attempt - 1) + Math.random() * 100;
+        retryAfterMs !== undefined
+          ? Math.min(retryAfterMs, maxBackoffMs)
+          : exponential;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
