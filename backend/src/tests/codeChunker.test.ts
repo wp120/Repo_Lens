@@ -7,6 +7,7 @@ import {
   detectLanguage,
 } from "../services/codeChunker.js";
 import { estimateVoyageTokens } from "../services/tokenEstimator.js";
+import { buildChunkEmbeddingInput } from "../services/embeddingContext.js";
 
 test("detectLanguage correctly maps file extensions to language names and grammars", () => {
   assert.deepEqual(detectLanguage("src/index.ts"), {
@@ -225,4 +226,51 @@ test("oversized statements and very long lines do not lose source text", async (
     500,
     chunks.map((chunk) => `${chunk.startLine}-${chunk.endLine}:${chunk.content.length}:${(chunk.content.match(/x/g) ?? []).length}`).join("\n"),
   );
+});
+
+test("oversized class method chunks preserve class, method, and signature context", async () => {
+  const code = [
+    "class BookingController {",
+    "  async getBooking(id: string) {",
+    "    const booking = await Booking.findById(id);",
+    "    if (!booking) throw new Error(\"Not found\");",
+    "    return booking;",
+    "  }",
+    "}",
+  ].join("\n");
+
+  const chunks = await chunkSourceFile("src/bookingController.ts", code, "sha1", {
+    maxChunkChars: 80,
+    maxTokensPerChunk: 30,
+  });
+  const methodChunk = chunks.find(
+    (chunk) => chunk.className === "BookingController" && chunk.symbolType === "method",
+  );
+
+  assert.ok(methodChunk);
+  assert.ok(methodChunk.className);
+  assert.match(methodChunk.functionSignature ?? "", /getBooking/);
+  assert.ok(buildChunkEmbeddingInput(methodChunk).startsWith(
+    "File: src/bookingController.ts\nLanguage: typescript\nClass: BookingController",
+  ));
+});
+
+test("embedding context keeps original source content unchanged", () => {
+  const chunk = {
+    filePath: "src/controllers/bookingController.ts",
+    content: 'const booking = await Booking.findById(id);\nif (!booking) throw new Error("Not found");',
+    startLine: 10,
+    endLine: 11,
+    language: "typescript",
+    symbolName: "BookingController.getBookingById (part 1)",
+    symbolType: "method",
+    className: "BookingController",
+    functionSignature: "async getBookingById(id: string)",
+    commitSha: "sha1",
+  };
+
+  const contextualInput = buildChunkEmbeddingInput(chunk);
+  assert.ok(contextualInput.includes("Signature: async getBookingById(id: string)"));
+  assert.ok(contextualInput.endsWith(chunk.content));
+  assert.equal(chunk.content.includes("File:"), false);
 });

@@ -36,9 +36,9 @@ export const prismaCodeChunkStore: CodeChunkStore = {
 
         for (let j = 0; j < batch.length; j++) {
           const chunk = batch[j];
-          const offset = j * 10;
+          const offset = j * 13;
           valuePlaceholders.push(
-            `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}::vector)`,
+            `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}::vector)`,
           );
 
           const id = randomUUID();
@@ -54,6 +54,9 @@ export const prismaCodeChunkStore: CodeChunkStore = {
             chunk.language,
             chunk.symbolName,
             chunk.commitSha,
+            chunk.symbolType ?? null,
+            chunk.className ?? null,
+            chunk.functionSignature ?? null,
             vectorString,
           );
         }
@@ -69,6 +72,9 @@ export const prismaCodeChunkStore: CodeChunkStore = {
             language,
             symbol_name,
             commit_sha,
+            symbol_type,
+            class_name,
+            function_signature,
             embedding
           ) VALUES ${valuePlaceholders.join(", ")}
         `;

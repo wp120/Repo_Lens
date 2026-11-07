@@ -10,6 +10,9 @@ export interface CodeChunk {
   endLine: number;
   language: string;
   symbolName: string | null;
+  symbolType?: string | null;
+  className?: string | null;
+  functionSignature?: string | null;
   commitSha: string;
 }
 
@@ -17,6 +20,7 @@ export interface ChunkerConfig {
   maxChunkChars?: number;
   maxTokensPerChunk?: number;
   minChunkChars?: number;
+  targetChunkChars?: number;
   chunkOverlapLines?: number;
 }
 
@@ -181,6 +185,7 @@ export async function chunkSourceFile(
             maxChars,
             minChars,
             maxTokens,
+            config.targetChunkChars ?? ingestionLimits.targetChunkChars,
           );
           if (chunks.length > 0) {
             return deduplicateAndValidateChunks(chunks);
@@ -263,6 +268,41 @@ function extractSymbolName(node: AstNode): string | null {
   return null;
 }
 
+function extractFunctionSignature(node: AstNode): string | null {
+  const firstLine = node.text.split("\n")[0]?.trim() ?? "";
+  if (!firstLine) return null;
+
+  const bodyIndex = firstLine.search(/\{\s*$/);
+  const colonIndex = firstLine.endsWith(":") ? firstLine.length - 1 : -1;
+  const endIndex = bodyIndex >= 0 ? bodyIndex : colonIndex >= 0 ? colonIndex : -1;
+  const signature = (endIndex >= 0 ? firstLine.slice(0, endIndex) : firstLine).trim();
+  return signature || null;
+}
+
+function extractClassOverview(
+  containerName: string,
+  containerNode: AstNode,
+  bodyNode: AstNode,
+): string {
+  const declaration = containerNode.text.split("\n")[0]?.trim() ?? containerName;
+  const lines = [declaration];
+  for (const member of bodyNode.children) {
+    const name = extractSymbolName(member);
+    if (!name) continue;
+    if (FUNCTION_TYPES.has(member.type)) {
+      const signature = extractFunctionSignature(member);
+      lines.push(signature ?? `${name}(...)`);
+    } else if (
+      member.type.includes("field") ||
+      member.type.includes("property") ||
+      member.type.includes("member")
+    ) {
+      lines.push(member.text.split("\n")[0]?.trim() ?? name);
+    }
+  }
+  return lines.join("\n");
+}
+
 function chunkWithTreeSitter(
   root: AstNode,
   sourceCode: string,
@@ -272,6 +312,7 @@ function chunkWithTreeSitter(
   maxChars: number,
   minChars: number,
   maxTokens: number,
+  targetChars: number,
 ): CodeChunk[] {
   const chunks: CodeChunk[] = [];
   const lines = sourceCode.split("\n");
@@ -367,6 +408,9 @@ function chunkWithTreeSitter(
         endLine: node.endPosition.row + 1,
         language,
         symbolName: extractSymbolName(targetNode),
+        symbolType: isContainer ? "class" : isFunction ? "function" : "statement",
+        className: isContainer ? extractSymbolName(targetNode) : null,
+        functionSignature: isFunction ? extractFunctionSignature(targetNode) : null,
         commitSha,
       });
       return;
@@ -446,7 +490,8 @@ function chunkWithTreeSitter(
       });
     }
   }
-  return validatedChunks;
+  const merged = mergeTrailingSmallUnits(validatedChunks, minChars, maxChars, maxTokens);
+  return merged;
 }
 
 function chunkOversizedContainer(
@@ -469,23 +514,23 @@ function chunkOversizedContainer(
         c.type.includes("block"),
     ) ?? targetContainer;
 
-  // Header chunk (opening class definition before body contents)
+  // Add a small source-grounded structural overview for oversized containers.
   const headerStartLine = containerNode.startPosition.row + 1;
   const headerEndLine = bodyNode.startPosition.row + 1;
-  const allLines = sourceCode.split("\n");
-  const headerText = allLines
-    .slice(headerStartLine - 1, headerEndLine)
-    .join("\n")
-    .trim();
-
-  if (headerText && headerText.length <= maxChars) {
+  const overviewText = extractClassOverview(containerName, containerNode, bodyNode);
+  if (
+    overviewText &&
+    nodeFitsBudgets(overviewText, maxChars, maxTokens)
+  ) {
     outputChunks.push({
       filePath,
-      content: headerText,
+      content: overviewText,
       startLine: headerStartLine,
       endLine: headerEndLine,
       language,
       symbolName: `${containerName} (declaration)`,
+      symbolType: "class_overview",
+      className: containerName,
       commitSha,
     });
   }
@@ -500,7 +545,7 @@ function chunkOversizedContainer(
       ? `${containerName}.${memberName}`
       : `${containerName} member`;
 
-    if (memberText.length <= maxChars) {
+    if (nodeFitsBudgets(memberText, maxChars, maxTokens)) {
       outputChunks.push({
         filePath,
         content: memberText,
@@ -508,6 +553,11 @@ function chunkOversizedContainer(
         endLine: member.endPosition.row + 1,
         language,
         symbolName: qualifiedName,
+        symbolType: FUNCTION_TYPES.has(member.type) ? "method" : "class_member",
+        className: containerName,
+        functionSignature: FUNCTION_TYPES.has(member.type)
+          ? extractFunctionSignature(member)
+          : null,
         commitSha,
       });
     } else if (FUNCTION_TYPES.has(member.type)) {
@@ -552,6 +602,17 @@ function chunkOversizedFunction(
   overrideName?: string,
 ): void {
   const fnName = overrideName ?? extractSymbolName(targetFn) ?? "function";
+  const className = overrideName?.includes(".")
+    ? overrideName.slice(0, overrideName.lastIndexOf("."))
+    : null;
+  const functionSignature = extractFunctionSignature(targetFn);
+  const annotate = (chunks: CodeChunk[]): CodeChunk[] =>
+    chunks.map((chunk) => ({
+      ...chunk,
+      symbolType: className ? "method" : "function",
+      className,
+      functionSignature,
+    }));
   const bodyNode = targetFn.children.find(
     (c) => c.type.includes("body") || c.type.includes("block"),
   );
@@ -568,7 +629,7 @@ function chunkOversizedFunction(
       fnName,
       maxTokens,
     );
-    outputChunks.push(...chunks);
+    outputChunks.push(...annotate(chunks));
     return;
   }
 
@@ -598,6 +659,9 @@ function chunkOversizedFunction(
         endLine,
         language,
         symbolName: `${fnName} (part ${partNumber++})`,
+        symbolType: className ? "method" : "function",
+        className,
+        functionSignature,
         commitSha,
       });
     }
@@ -635,12 +699,14 @@ function chunkOversizedFunction(
               `${fnName} (part ${partNumber++})`,
               maxTokens,
             );
-      outputChunks.push(...subChunks);
+      outputChunks.push(...annotate(subChunks));
     } else if (
       currentCharCount + stmtText.length > maxChars ||
-      estimateVoyageTokens(
+      !nodeFitsBudgets(
         sourceTextForNodes(currentStatements.concat(stmt), sourceCode),
-      ) > maxTokens
+        maxChars,
+        maxTokens,
+      )
     ) {
       flushStatements();
       currentStatements.push(stmt);
@@ -989,4 +1055,36 @@ function deduplicateAndValidateChunks(chunks: CodeChunk[]): CodeChunk[] {
   }
 
   return validated;
+}
+
+function mergeTrailingSmallUnits(
+  chunks: CodeChunk[],
+  softMinimum: number,
+  maxChars: number,
+  maxTokens: number,
+): CodeChunk[] {
+  if (chunks.length < 2) return chunks;
+
+  const last = chunks[chunks.length - 1];
+  const preceding = chunks[chunks.length - 2];
+  if (
+    last.content.length >= softMinimum ||
+    preceding.symbolName !== null ||
+    last.symbolName !== null ||
+    !last.filePath || !preceding.filePath
+  ) {
+    return chunks;
+  }
+
+  const mergedContent = `${preceding.content.trim()}\n${last.content.trim()}`;
+  if (!nodeFitsBudgets(mergedContent, maxChars, maxTokens)) return chunks;
+
+  return [
+    ...chunks.slice(0, -2),
+    {
+      ...preceding,
+      content: mergedContent,
+      endLine: last.endLine,
+    },
+  ];
 }

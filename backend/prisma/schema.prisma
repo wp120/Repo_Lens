@@ -86,6 +86,9 @@ model CodeChunk {
   endLine       Int                         @map("end_line")
   language      String                      @db.VarChar(64)
   symbolName    String?                     @map("symbol_name") @db.VarChar(255)
+  symbolType    String?                     @map("symbol_type") @db.VarChar(32)
+  className     String?                     @map("class_name") @db.VarChar(255)
+  functionSignature String?                 @map("function_signature") @db.Text
   commitSha     String                      @map("commit_sha") @db.VarChar(40)
   embedding     Unsupported("vector(1024)")
   createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)

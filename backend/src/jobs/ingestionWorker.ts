@@ -18,6 +18,7 @@ import {
   type ChunkerConfig,
 } from "../services/codeChunker.js";
 import { generateVoyageEmbeddings } from "../services/voyageEmbedding.js";
+import { buildChunkEmbeddingInput } from "../services/embeddingContext.js";
 import {
   prismaCodeChunkStore,
   type CodeChunkStore,
@@ -187,6 +188,8 @@ export async function processIngestionJob(
       const chunks = await deps.chunker(file.path, content, commitSha, {
         maxChunkChars: ingestionLimits.maxChunkChars,
         minChunkChars: ingestionLimits.minChunkChars,
+        targetChunkChars: ingestionLimits.targetChunkChars,
+        maxTokensPerChunk: ingestionLimits.maxTokensPerChunk,
         chunkOverlapLines: ingestionLimits.chunkOverlapLines,
       });
 
@@ -201,7 +204,7 @@ export async function processIngestionJob(
 
     // Generate embeddings in batches via Voyage AI
     if (allChunks.length > 0) {
-      const texts = allChunks.map((c) => c.content);
+      const texts = allChunks.map((c) => buildChunkEmbeddingInput(c));
       const embeddings = await deps.embedder(texts);
 
       if (embeddings.length !== allChunks.length) {
