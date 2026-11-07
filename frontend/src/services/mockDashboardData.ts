@@ -15,6 +15,7 @@ export const mockRepositories: Repository[] = [
           {
             id: "conversation-architecture",
             title: "How does routing work?",
+            createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "Today",
             messages: [
               {
@@ -36,12 +37,14 @@ export const mockRepositories: Repository[] = [
           {
             id: "conversation-data",
             title: "Where is app state kept?",
+            createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "Yesterday",
             messages: [],
           },
           {
             id: "conversation-loading",
             title: "Loading state preview",
+            createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "Just now",
             messages: [],
             isLoading: true,

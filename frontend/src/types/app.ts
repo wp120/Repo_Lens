@@ -8,6 +8,10 @@ export interface User {
 export interface Citation {
   label: string;
   url: string;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  commitSha: string;
 }
 
 export interface ChatMessage {
@@ -23,10 +27,13 @@ export type BranchStatus = "ready" | "indexing" | "failed";
 export interface Conversation {
   id: string;
   title: string;
+  createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
   isLoading?: boolean;
 }
+
+export type ConversationSummary = Conversation;
 
 export interface RepositoryBranch {
   id: string;

@@ -14,6 +14,7 @@ interface ConversationPanelProps {
   repository: Repository | null;
   onAddRepository: () => void;
   hasRepositories: boolean;
+  onSendMessage: (message: string) => Promise<void>;
 }
 
 export function ConversationPanel({
@@ -22,6 +23,7 @@ export function ConversationPanel({
   repository,
   onAddRepository,
   hasRepositories,
+  onSendMessage,
 }: ConversationPanelProps) {
   const [draft, setDraft] = useState("");
 
@@ -199,6 +201,10 @@ export function ConversationPanel({
         disabled={conversation.isLoading}
         message={draft}
         onMessageChange={setDraft}
+        onSend={async (message) => {
+          await onSendMessage(message);
+          setDraft("");
+        }}
       />
     </section>
   );

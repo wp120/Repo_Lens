@@ -5,6 +5,7 @@ import { authRouter } from "./routes/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { healthRouter } from "./routes/health.js";
 import { repositoriesRouter } from "./routes/repositories.js";
+import { conversationsRouter } from "./routes/conversations.js";
 
 export const app = express();
 
@@ -14,7 +15,7 @@ app.use(
   cors({
     origin: getFrontendOrigin(),
     credentials: true,
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "X-CSRF-Token"],
   }),
 );
@@ -23,4 +24,5 @@ app.use(sessionMiddleware);
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/repositories", repositoriesRouter);
+app.use("/api/conversations", conversationsRouter);
 app.use(errorHandler);

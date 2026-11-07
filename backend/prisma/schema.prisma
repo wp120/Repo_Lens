@@ -15,6 +15,7 @@ model User {
   createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   branchAccess UserBranchAccess[]
   ingestions   UserBranchIngestion[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -46,6 +47,7 @@ model BranchIndex {
   userAccess       UserBranchAccess[]
   ingestions       UserBranchIngestion[]
   codeChunks       CodeChunk[]
+  conversations    Conversation[]
 
   @@unique([repositoryId, branchName])
   @@map("branch_indexes")
@@ -92,4 +94,49 @@ model CodeChunk {
   @@index([branchIndexId])
   @@index([branchIndexId, filePath])
   @@map("code_chunks")
+}
+
+model Conversation {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  branchIndexId String    @map("branch_index_id") @db.Uuid
+  title         String    @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchIndex   BranchIndex @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([branchIndexId, updatedAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id             String             @id @default(uuid()) @db.Uuid
+  conversationId String             @map("conversation_id") @db.Uuid
+  role           String             @db.VarChar(16)
+  content        String             @db.Text
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  clientId       String?            @map("client_id") @db.Uuid
+  status         String             @default("completed") @db.VarChar(16)
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  citations      MessageCitation[]
+
+  @@index([conversationId, createdAt])
+  @@unique([conversationId, clientId])
+  @@map("messages")
+}
+
+model MessageCitation {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  filePath  String   @map("file_path") @db.VarChar(1024)
+  startLine Int      @map("start_line")
+  endLine   Int      @map("end_line")
+  commitSha String   @map("commit_sha") @db.VarChar(40)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_citations")
 }

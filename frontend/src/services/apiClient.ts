@@ -33,10 +33,11 @@ export async function apiRequest<T>(
 export async function apiMutate<T>(
   path: string,
   body?: Record<string, string>,
+  method = "POST",
 ): Promise<T> {
   const { csrfToken } = await apiRequest<CsrfResponse>("/api/auth/csrf");
   return apiRequest<T>(path, {
-    method: "POST",
+    method,
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,

@@ -5,17 +5,21 @@ export function MessageComposer({
   disabled = false,
   message,
   onMessageChange,
+  onSend,
 }: {
   disabled?: boolean;
   message: string;
   onMessageChange: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
 }) {
   const [notice, setNotice] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!message.trim()) return;
-    setNotice("Chat is not connected yet. Your message was not sent or saved.");
+    void Promise.resolve(onSend(message.trim())).catch((error: unknown) => {
+      setNotice(error instanceof Error ? error.message : "Message could not be sent.");
+    });
   }
 
   return (

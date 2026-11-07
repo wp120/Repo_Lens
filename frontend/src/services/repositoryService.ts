@@ -1,5 +1,6 @@
 import type { Repository, RepositoryBranch } from "../types/app";
 import { apiMutate, apiRequest } from "./apiClient";
+import { conversationService } from "./conversationService";
 
 export type AddRepositoryResult =
   | {
@@ -37,7 +38,18 @@ export type AttachedRepositoryResult = Extract<
 
 export const repositoryService: RepositoryService = {
   async listRepositories() {
-    return apiRequest<Repository[]>("/api/repositories");
+    const repositories = await apiRequest<Repository[]>("/api/repositories");
+    return Promise.all(
+      repositories.map(async (repository) => ({
+        ...repository,
+        branches: await Promise.all(
+          repository.branches.map(async (branch) => ({
+            ...branch,
+            conversations: await conversationService.list(branch.id),
+          })),
+        ),
+      })),
+    );
   },
   async addRepository(url) {
     return apiMutate<AddRepositoryResult>("/api/repositories/resolve", {

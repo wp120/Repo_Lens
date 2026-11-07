@@ -56,6 +56,7 @@ export function AppLayout() {
             context={{
               repositories,
               onAddRepository: () => setAddRepositoryOpen(true),
+              onRepositoriesChange: setRepositories,
             }}
           />
           <footer className="app-footer">

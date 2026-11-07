@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import type { Repository, RepositoryBranch } from "../types/app";
 import { Icon } from "./Icon";
+import { conversationService } from "../services/conversationService";
 
 interface AppSidebarProps {
   repositories: Repository[];
@@ -22,13 +23,13 @@ export function AppSidebar({
   const [notice, setNotice] = useState("");
   const navigate = useNavigate();
 
-  function createConversation(branch: RepositoryBranch) {
-    const conversation = {
-      id: `local-${crypto.randomUUID()}`,
-      title: "New conversation",
-      updatedAt: "Just now",
-      messages: [],
-    };
+  async function createConversation(branch: RepositoryBranch) {
+    setNotice("");
+    const conversation = await conversationService.create(branch.id).catch((error) => {
+      setNotice(error instanceof Error ? error.message : "Could not create conversation.");
+      return null;
+    });
+    if (!conversation) return;
     onRepositoriesChange(
       repositories.map((repository) => ({
         ...repository,
@@ -41,6 +42,39 @@ export function AppSidebar({
     );
     navigate(`/dashboard/${branch.id}/${conversation.id}`);
     onClose();
+  }
+
+  async function renameConversation(conversationId: string, currentTitle: string) {
+    const title = window.prompt("Rename conversation", currentTitle)?.trim();
+    if (!title || title === currentTitle) return;
+    await conversationService.rename(conversationId, title);
+    onRepositoriesChange(
+      repositories.map((repository) => ({
+        ...repository,
+        branches: repository.branches.map((branch) => ({
+          ...branch,
+          conversations: branch.conversations.map((conversation) =>
+            conversation.id === conversationId ? { ...conversation, title } : conversation,
+          ),
+        })),
+      })),
+    );
+  }
+
+  async function deleteConversation(branch: RepositoryBranch, conversationId: string) {
+    if (!window.confirm("Delete this conversation and its messages?")) return;
+    await conversationService.delete(conversationId);
+    onRepositoriesChange(
+      repositories.map((repository) => ({
+        ...repository,
+        branches: repository.branches.map((item) =>
+          item.id === branch.id
+            ? { ...item, conversations: item.conversations.filter((conversation) => conversation.id !== conversationId) }
+            : item,
+        ),
+      })),
+    );
+    if (window.location.pathname.endsWith(conversationId)) navigate("/dashboard");
   }
 
   function removeBranch(branchName: string) {
@@ -151,6 +185,7 @@ export function AppSidebar({
                       </NavLink>
                     )}
                     {branch.conversations.map((conversation) => (
+                      <div className="conversation-row" key={conversation.id}>
                       <NavLink
                         className={({ isActive }) =>
                           `conversation-link ${isActive ? "conversation-active" : ""}`
@@ -162,6 +197,9 @@ export function AppSidebar({
                         <Icon name="message" />
                         <span>{conversation.title}</span>
                       </NavLink>
+                        <button aria-label={`Rename ${conversation.title}`} className="conversation-action" onClick={() => void renameConversation(conversation.id, conversation.title)} type="button">Edit</button>
+                        <button aria-label={`Delete ${conversation.title}`} className="conversation-action" onClick={() => void deleteConversation(branch, conversation.id)} type="button">×</button>
+                      </div>
                     ))}
                     <button
                       className="new-conversation-button"
