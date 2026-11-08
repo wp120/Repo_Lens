@@ -1,6 +1,7 @@
 import { prisma } from "../database/prisma.js";
 import { generateVoyageEmbeddings } from "./voyageEmbedding.js";
 import { buildCitationUrl } from "./citationUrls.js";
+import { runRetrievalAgent } from "./retrievalAgent.js";
 
 export interface ConversationCitation {
   filePath: string;
@@ -12,6 +13,7 @@ export interface ConversationCitation {
 }
 
 export interface RetrievedChunk {
+  id?: string;
   filePath: string;
   content: string;
   startLine: number;
@@ -174,14 +176,15 @@ export async function sendConversationMessage(
     }
   }
   try {
-    const chunks = await retrieveRelevantChunks(
-      conversation.branchIndexId,
+    const retrieval = await retrieveAgentEvidence(
       content,
+      conversation.branchIndexId,
     );
     const answer = await generateAnswer(
       content,
-      chunks,
+      retrieval.chunks,
       conversation.branchIndex.repository.htmlUrl,
+      retrieval.status,
     );
     const citationRows = answer.citations.map((citation) => ({
       filePath: citation.filePath,
@@ -259,6 +262,7 @@ export async function retrieveRelevantChunks(
   const vector = `[${embedding.join(",")}]`;
   const rows = await prisma.$queryRawUnsafe<
     Array<{
+      id: string;
       file_path: string;
       content: string;
       start_line: number;
@@ -266,7 +270,7 @@ export async function retrieveRelevantChunks(
       commit_sha: string;
     }>
   >(
-    `SELECT file_path, content, start_line, end_line, commit_sha
+    `SELECT id::text, file_path, content, start_line, end_line, commit_sha
        FROM code_chunks
       WHERE branch_index_id = $1::uuid
       ORDER BY embedding <=> $2::vector
@@ -276,6 +280,7 @@ export async function retrieveRelevantChunks(
     limit,
   );
   return rows.map((row) => ({
+    id: row.id,
     filePath: row.file_path,
     content: row.content,
     startLine: row.start_line,
@@ -284,10 +289,35 @@ export async function retrieveRelevantChunks(
   }));
 }
 
+async function retrieveAgentEvidence(
+  question: string,
+  branchIndexId: string,
+) {
+  const apiKey = process.env.AI_API_KEY?.trim();
+  const model = process.env.AI_CHAT_MODEL?.trim();
+  if (!apiKey || !model) {
+    return {
+      status: "insufficient" as const,
+      chunks: await retrieveRelevantChunks(branchIndexId, question),
+    };
+  }
+  return runRetrievalAgent(
+    question,
+    branchIndexId,
+    {
+      apiKey,
+      baseUrl: process.env.AI_BASE_URL?.trim(),
+      model,
+    },
+    retrieveRelevantChunks,
+  );
+}
+
 async function generateAnswer(
   question: string,
   chunks: RetrievedChunk[],
   repositoryUrl?: string,
+  retrievalStatus: "sufficient" | "insufficient" = "sufficient",
 ): Promise<{ content: string; citations: ConversationCitation[] }> {
   const provider = process.env.AI_PROVIDER?.trim().toLowerCase();
   const apiKey = process.env.AI_API_KEY?.trim();
@@ -303,6 +333,13 @@ async function generateAnswer(
     sourceId: `S${index + 1}`,
     ...chunk,
   }));
+  if (!chunks.length && retrievalStatus === "insufficient") {
+    return {
+      content: "I could not find enough relevant indexed code to answer this question confidently. Please try a more specific question or ensure the repository branch has been indexed.",
+      citations: [],
+    };
+  }
+
   let content = chunks.length
     ? `I found these relevant code locations:\n\n${chunks
         .map(
@@ -316,7 +353,7 @@ async function generateAnswer(
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: "Bearer " + apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -324,8 +361,7 @@ async function generateAnswer(
         messages: [
           {
             role: "system",
-            content:
-              "Answer using only the supplied code. Reference sources inline using only tokens such as [S1]. Do not invent source IDs, file paths, lines, or claims.",
+            content: `Answer using only the supplied code. Reference sources inline using only tokens such as [S1]. Do not invent source IDs, file paths, lines, or claims.${retrievalStatus === "insufficient" ? " The retrieval agent marked the evidence insufficient. Answer only what is supported, explicitly identify missing information, and do not fill gaps with unsupported code details." : ""}`,
           },
           {
             role: "user",
@@ -337,6 +373,7 @@ async function generateAnswer(
     if (!response.ok) {
       throw new ConversationError("The AI response request failed.", 502);
     }
+
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };

@@ -17,6 +17,7 @@
     "prisma:studio": "prisma studio --config prisma.config.ts"
   },
   "dependencies": {
+    "@openai/agents": "^0.21.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "bcryptjs": "^3.0.3",
