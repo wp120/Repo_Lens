@@ -7,7 +7,7 @@ import {
   detectLanguage,
 } from "../services/codeChunker.js";
 import { estimateVoyageTokens } from "../services/tokenEstimator.js";
-import { buildChunkEmbeddingInput } from "../services/embeddingContext.js";
+import { buildChunkEmbeddingText } from "../services/embeddingContext.js";
 
 test("detectLanguage correctly maps file extensions to language names and grammars", () => {
   assert.deepEqual(detectLanguage("src/index.ts"), {
@@ -250,9 +250,10 @@ test("oversized class method chunks preserve class, method, and signature contex
   assert.ok(methodChunk);
   assert.ok(methodChunk.className);
   assert.match(methodChunk.functionSignature ?? "", /getBooking/);
-  assert.ok(buildChunkEmbeddingInput(methodChunk).startsWith(
+  assert.ok(buildChunkEmbeddingText(methodChunk).startsWith(
     "File: src/bookingController.ts\nLanguage: typescript\nClass: BookingController",
   ));
+  assert.ok(buildChunkEmbeddingText(methodChunk).includes("Symbol type: method"));
 });
 
 test("embedding context keeps original source content unchanged", () => {
@@ -269,8 +270,33 @@ test("embedding context keeps original source content unchanged", () => {
     commitSha: "sha1",
   };
 
-  const contextualInput = buildChunkEmbeddingInput(chunk);
+  const contextualInput = buildChunkEmbeddingText(chunk);
+  assert.ok(contextualInput.startsWith(
+    "File: src/controllers/bookingController.ts\nLanguage: typescript\nClass: BookingController\nSymbol: BookingController.getBookingById (part 1)\nSymbol type: method\nSignature: async getBookingById(id: string)\n\nCode:\n",
+  ));
   assert.ok(contextualInput.includes("Signature: async getBookingById(id: string)"));
   assert.ok(contextualInput.endsWith(chunk.content));
   assert.equal(chunk.content.includes("File:"), false);
+});
+
+test("embedding context omits unavailable metadata", () => {
+  const text = buildChunkEmbeddingText({
+    filePath: "src/standalone.ts",
+    content: "export const value = 1;",
+    startLine: 1,
+    endLine: 1,
+    language: "typescript",
+    symbolName: null,
+    symbolType: null,
+    className: null,
+    functionSignature: null,
+    commitSha: "sha1",
+  });
+
+  assert.equal(
+    text,
+    "File: src/standalone.ts\nLanguage: typescript\n\nCode:\nexport const value = 1;",
+  );
+  assert.equal(text.includes("null"), false);
+  assert.equal(text.includes("undefined"), false);
 });

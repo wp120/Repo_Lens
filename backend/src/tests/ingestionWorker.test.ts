@@ -161,6 +161,11 @@ test("processIngestionJob successfully processes queued branch to ready", async 
   };
   const chunkStore = new FakeChunkStore();
   const deps = createTestDependencies({ prisma, chunkStore });
+  let embeddingTexts: string[] = [];
+  deps.embedder = async (texts) => {
+    embeddingTexts = texts;
+    return texts.map(() => Array(1024).fill(0.01));
+  };
 
   await processIngestionJob(
     {
@@ -179,6 +184,14 @@ test("processIngestionJob successfully processes queued branch to ready", async 
   assert.equal(chunkStore.savedChunks[0].embedding.length, 1024);
   assert.equal(chunkStore.savedChunks[0].branchIndexId, "branch-1");
   assert.equal(chunkStore.savedChunks[0].commitSha, "a".repeat(40));
+  assert.equal(
+    embeddingTexts[0],
+    "File: src/index.ts\nLanguage: typescript\nSymbol: hello\n\nCode:\nexport function hello() { return 'world'; }",
+  );
+  assert.equal(
+    chunkStore.savedChunks[0].content,
+    "export function hello() { return 'world'; }",
+  );
 });
 
 test("processIngestionJob skips already-ready branch index idempotently", async () => {

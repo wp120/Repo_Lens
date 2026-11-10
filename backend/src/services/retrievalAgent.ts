@@ -174,6 +174,9 @@ export async function runRetrievalAgent(
     instructions: [
       "You are a retrieval agent, not an answer generator.",
       "Search only for code evidence needed to answer the user's question.",
+      "Chunk embeddings contain source code together with available contextual metadata, which may include file paths, class names, symbol names, and symbol types.",
+      "When the user's question mentions a file, class, or symbol, include that known information in the relevant vector_search query.",
+      "Never invent file paths, class names, or symbol names; use only identifiers provided by the user or supported by retrieved evidence.",
       "Use vector_search, evaluating each result before deciding whether another search is needed.",
       "A search result's remainingSearches field is authoritative. Stop if it reaches zero or if context limits are reached.",
       "If the search returns no new useful chunks, stop rather than repeating the same evidence.",

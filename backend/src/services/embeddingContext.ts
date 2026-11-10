@@ -1,18 +1,20 @@
 import type { CodeChunk } from "./codeChunker.js";
 
-export function buildChunkEmbeddingInput(chunk: CodeChunk): string {
-  const context: string[] = [
-    `File: ${chunk.filePath}`,
-    `Language: ${chunk.language}`,
-  ];
+export function buildChunkEmbeddingText(chunk: CodeChunk): string {
+  const context = [`File: ${chunk.filePath}`, `Language: ${chunk.language}`];
+  addOptionalMetadata(context, "Class", chunk.className);
+  addOptionalMetadata(context, "Symbol", chunk.symbolName);
+  addOptionalMetadata(context, "Symbol type", chunk.symbolType);
+  addOptionalMetadata(context, "Signature", chunk.functionSignature);
 
-  if (chunk.className) context.push(`Class: ${chunk.className}`);
-  if (chunk.functionSignature) {
-    context.push(`Function: ${chunk.symbolName ?? chunk.functionSignature}`);
-    context.push(`Signature: ${chunk.functionSignature}`);
-  } else if (chunk.symbolName) {
-    context.push(`Symbol: ${chunk.symbolName}`);
-  }
+  return `${context.join("\n")}\n\nCode:\n${chunk.content}`;
+}
 
-  return `${context.join("\n")}\n\n${chunk.content}`;
+function addOptionalMetadata(
+  context: string[],
+  label: string,
+  value: string | null | undefined,
+): void {
+  const metadata = value?.trim();
+  if (metadata) context.push(`${label}: ${metadata}`);
 }

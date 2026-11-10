@@ -42,7 +42,9 @@ test("enforces unique chunk and context budgets", () => {
 test("uses the authorized branch and caps the search limit", async () => {
   let searchedBranch = "";
   let searchedLimit = 0;
+  let agentInstructions = "";
   const mockRun = (async (agent: any) => {
+    agentInstructions = agent.instructions;
     const searchTool = agent.tools[0] as FunctionTool;
     await invokeFunctionTool({
       tool: searchTool,
@@ -71,6 +73,9 @@ test("uses the authorized branch and caps the search limit", async () => {
 
   assert.equal(searchedBranch, "authorized-branch-id");
   assert.equal(searchedLimit, defaultRetrievalBudget.maxChunksPerSearch);
+  assert.match(agentInstructions, /source code together with available contextual metadata/);
+  assert.match(agentInstructions, /include that known information/);
+  assert.match(agentInstructions, /Never invent file paths, class names, or symbol names/);
 });
 
 test("one search can be sufficient and another search can refine evidence", async () => {

@@ -1,0 +1,2005 @@
+{
+  "metadata": {
+    "evaluationTimestamp": "2026-11-10T03:59:37.994Z",
+    "status": "completed",
+    "datasetId": "p-limit-main-retrieval-v1",
+    "datasetVersion": "1.0.0",
+    "repository": {
+      "owner": "sindresorhus",
+      "name": "p-limit",
+      "url": "https://github.com/sindresorhus/p-limit",
+      "branch": "main",
+      "datasetCommitSha": null,
+      "indexedCommitSha": "a8a6fbec4e0e866d6d779b10889bb4f5567e70eb"
+    },
+    "branchIndexId": "c8b88a3d-f5f8-487e-852e-c8d4065167bc",
+    "retrievalMethod": "vector",
+    "topK": 6,
+    "embedding": {
+      "provider": "Voyage AI",
+      "model": "voyage-code-4",
+      "dimensions": 1024,
+      "maxRetries": 3,
+      "maxBackoffMs": 8000,
+      "maxInputsPerRequest": 100,
+      "maxTokensPerRequest": 2500,
+      "minSpacingMs": 22000,
+      "maxWaitMs": 120000
+    },
+    "evaluatedQuestionCount": 20
+  },
+  "aggregateMetrics": {
+    "answerableQuestionCount": 18,
+    "unanswerableQuestionCount": 2,
+    "Recall@6": 0.75,
+    "MRR@6": 0.5462962962962963,
+    "nDCG@6": 0.522935912244289
+  },
+  "questions": [
+    {
+      "questionId": "PL01",
+      "question": "How does p-limit validate the concurrency value, and which values are accepted?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL01-E1",
+          "filePath": "index.js",
+          "symbol": "validateConcurrency",
+          "relevance": 3
+        },
+        {
+          "id": "PL01-E2",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "7dd807d7-87e8-4e36-8c41-76502d03a6cb",
+          "filePath": "index.js",
+          "symbolName": "validateConcurrency",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function validateConcurrency(concurrency)",
+          "distance": 0.4914403850698692,
+          "matchedEvidenceIds": [
+            "PL01-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "function validateConcurrency(concurrency) {\n\tif (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n}"
+        },
+        {
+          "chunkId": "e7509bc7-e920-4f87-8d00-e08b1a016cc6",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5448966893615304,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map passes sequential indexes for a generator', async t => {\n\tconst limit = pLimit(2);\n\n\tfunction * inputs() {\n\t\tyield 'a';\n\t\tyield 'b';\n\t\tyield 'c';\n\t}\n\n\tconst results = await limit.map(inputs(), (value, index) => `${index}:${value}`);\n\n\tt.dee"
+        },
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5537727741138465,
+          "matchedEvidenceIds": [
+            "PL01-E1",
+            "PL01-E2"
+          ],
+          "relevanceGrade": 2,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5560226308114118,
+          "matchedEvidenceIds": [
+            "PL01-E1",
+            "PL01-E2"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5607247352600098,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.578851729631424,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.95583058934618
+      }
+    },
+    {
+      "questionId": "PL02",
+      "question": "How does pLimit handle an options object instead of a numeric concurrency argument?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL02-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.47495463938331994,
+          "matchedEvidenceIds": [
+            "PL02-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.48536108565081804,
+          "matchedEvidenceIds": [
+            "PL02-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        },
+        {
+          "chunkId": "e7509bc7-e920-4f87-8d00-e08b1a016cc6",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.48630175239412354,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map passes sequential indexes for a generator', async t => {\n\tconst limit = pLimit(2);\n\n\tfunction * inputs() {\n\t\tyield 'a';\n\t\tyield 'b';\n\t\tyield 'c';\n\t}\n\n\tconst results = await limit.map(inputs(), (value, index) => `${index}:${value}`);\n\n\tt.dee"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5102286922659014,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "ee21e900-8a22-4e27-922e-bb3bf09bbc18",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5209969580173357,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "import process from 'node:process';\nimport {AsyncLocalStorage} from 'node:async_hooks';\nimport {setTimeout as delay} from 'node:timers/promises';\nimport test from 'ava';\nimport inRange from 'in-range';\nimport timeSpan from 'time-span';\nimport randomI"
+        },
+        {
+          "chunkId": "7dd807d7-87e8-4e36-8c41-76502d03a6cb",
+          "filePath": "index.js",
+          "symbolName": "validateConcurrency",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function validateConcurrency(concurrency)",
+          "distance": 0.5224918411676902,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "function validateConcurrency(concurrency) {\n\tif (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n}"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      }
+    },
+    {
+      "questionId": "PL03",
+      "question": "Under what condition does the limiter start the next queued task?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL03-E1",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 3
+        },
+        {
+          "id": "PL03-E2",
+          "filePath": "index.js",
+          "symbol": "enqueue",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5801834416280118,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5811825048218657,
+          "matchedEvidenceIds": [
+            "PL03-E1",
+            "PL03-E2"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        },
+        {
+          "chunkId": "69f1bcbf-7af9-4d2a-9531-4132176cbe2e",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.5961033879549319,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#scenarios = []"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5985540151596069,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5997504889965057,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "d1c3a510-3947-4481-8777-d3c05541d54c",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.6008557260291493,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('clearQueue rejects pending promises when enabled', async t => {\n\tconst limit = pLimit({concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limit(() => delay(100));\n\tconst pendingPromiseOne = limit(() => delay(10));\n"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 0.5,
+        "ndcg": 0.4966392596877323
+      }
+    },
+    {
+      "questionId": "PL04",
+      "question": "What happens when a limited task finishes, and how does the limiter free capacity?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL04-E1",
+          "filePath": "index.js",
+          "symbol": "next",
+          "relevance": 3
+        },
+        {
+          "id": "PL04-E2",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.56294121963136,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "cc5b9b1a-44cd-45ff-8fab-4184bcc2cab4",
+          "filePath": "readme.md",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.568789005279541,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "Discard pending promises that are waiting to run.\n\nThis might be useful if you want to tear down the queue at the end of your program's lifecycle or discard any function calls referencing an intermediary state of your app.\n\nNote: This does not cancel"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.568990502893358,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.570453017950058,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5714601576328278,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "8a19c4c2-67ca-4d1d-8ab0-37f586235269",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5725919178900692,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('limitFunction exposes clearQueue', async t => {\n\tconst limitedFunction = limitFunction(() => delay(20), {concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limitedFunction();\n\tconst pendingPromise = limitedFunction"
+        }
+      ],
+      "metrics": {
+        "recall": 0,
+        "mrr": 0,
+        "ndcg": 0
+      }
+    },
+    {
+      "questionId": "PL05",
+      "question": "How does the run function handle the task's returned promise and the promise returned to the caller?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL05-E1",
+          "filePath": "index.js",
+          "symbol": "run",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "fa9612b2-af9d-4ce0-930b-15c44020547b",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.5250997215390504,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\n\tRun this benchmark suite.\n\n\t@returns {Promise<void>}\n\t*/"
+        },
+        {
+          "chunkId": "6e77fcb5-04b8-4d14-ad4a-1d8cfa8c0d40",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite.run",
+          "symbolType": "method",
+          "className": "BenchmarkSuite",
+          "functionSignature": "async run()",
+          "distance": 0.5409775899092684,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "async run() {\n\t\tconst description = this.#options.description || '';\n\t\tconst headerName = styleText('bold', styleText('cyan', this.#name));\n\t\tconst header = `${headerName}${description ? ` ${styleText('gray', `— ${description}`)}` : ''}`;\n\t\tconsole.l"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5740276144693579,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "4a29aea3-4326-4b92-ae21-4299a6916b82",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite.#runScenario",
+          "symbolType": "method",
+          "className": "BenchmarkSuite",
+          "functionSignature": "async #runScenario(scenario)",
+          "distance": 0.5790619112738522,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "async #runScenario(scenario) {\n\t\tconst {name, fn, options} = scenario;\n\n\t\t// Warmup run\n\t\tif (options.warmup) {\n\t\t\ttry {\n\t\t\t\tawait fn();\n\t\t\t} catch {\n\t\t\t\t// Ignore warmup errors\n\t\t\t}\n\t\t}\n\n\t\t// Actual benchmark runs\n\t\tconst times = [];\n\t\tlet lastResul"
+        },
+        {
+          "chunkId": "8b0c00b9-4bd2-447b-b93e-bc1ec4dd57a8",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite (declaration)",
+          "symbolType": "class_overview",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.579129924877888,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "class BenchmarkSuite {\nconstructor(name, options, benchmarker)\nscenario(name, fn, options = {})\nscenarios(configs, fn, options = {})\nasync run()\nasync #runScenario(scenario)"
+        },
+        {
+          "chunkId": "91566bec-c7e3-40e2-a75e-2ec1fef64277",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite.scenarios",
+          "symbolType": "method",
+          "className": "BenchmarkSuite",
+          "functionSignature": "scenarios(configs, fn, options = {})",
+          "distance": 0.57942738182218,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "scenarios(configs, fn, options = {}) {\n\t\tfor (const config of configs) {\n\t\t\tthis.scenario(config.name, () => fn(config.config || config), options);\n\t\t}\n\n\t\treturn this;\n\t}"
+        }
+      ],
+      "metrics": {
+        "recall": 0,
+        "mrr": 0,
+        "ndcg": 0
+      }
+    },
+    {
+      "questionId": "PL06",
+      "question": "Why does the internal run function catch errors while awaiting a task result?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL06-E1",
+          "filePath": "index.js",
+          "symbol": "run",
+          "relevance": 3
+        },
+        {
+          "id": "PL06-E2",
+          "filePath": "index.js",
+          "symbol": "next",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "fa9612b2-af9d-4ce0-930b-15c44020547b",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.7056657882233197,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\n\tRun this benchmark suite.\n\n\t@returns {Promise<void>}\n\t*/"
+        },
+        {
+          "chunkId": "69f1bcbf-7af9-4d2a-9531-4132176cbe2e",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.7126480765728996,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#scenarios = []"
+        },
+        {
+          "chunkId": "6e77fcb5-04b8-4d14-ad4a-1d8cfa8c0d40",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite.run",
+          "symbolType": "method",
+          "className": "BenchmarkSuite",
+          "functionSignature": "async run()",
+          "distance": 0.7136903490516429,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "async run() {\n\t\tconst description = this.#options.description || '';\n\t\tconst headerName = styleText('bold', styleText('cyan', this.#name));\n\t\tconst header = `${headerName}${description ? ` ${styleText('gray', `— ${description}`)}` : ''}`;\n\t\tconsole.l"
+        },
+        {
+          "chunkId": "48a1a278-8ea8-41f2-a8aa-d005a4f31ed8",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.7179345320424159,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map rejects immediately with the iterable error and still runs already scheduled tasks', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('Iterator failed');\n\tconst completed = [];\n\n\tfunction * inputs() {\n\t\tyield 1;\n\t\tyield 2;\n\t\t"
+        },
+        {
+          "chunkId": "144aee17-36e1-46b7-86a0-bd8c20abd1a7",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.7198453080561941,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map does not leave unhandled rejections when the iterable throws', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('Iterator failed');\n\n\tfunction * inputs() {\n\t\tyield 1;\n\t\tyield 2;\n\t\tyield 3;\n\t\tthrow error;\n\t}\n\n\tawait t.throwsAs"
+        },
+        {
+          "chunkId": "476af619-7971-4446-99a4-3396f49b101f",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.7256108440640818,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#benchmarker"
+        }
+      ],
+      "metrics": {
+        "recall": 0,
+        "mrr": 0,
+        "ndcg": 0
+      }
+    },
+    {
+      "questionId": "PL07",
+      "question": "How does the returned limit function enqueue a call and pass the function's arguments through?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL07-E1",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 3
+        },
+        {
+          "id": "PL07-E2",
+          "filePath": "index.js",
+          "symbol": "enqueue",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.4358274264129899,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4652474085912859,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.47811825638656835,
+          "matchedEvidenceIds": [
+            "PL07-E1",
+            "PL07-E2"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.49274562277631806,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4963041689667851,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4997255653061139,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.3935773014954859
+      }
+    },
+    {
+      "questionId": "PL08",
+      "question": "How are activeCount and pendingCount exposed by the limiter?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL08-E1",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "be74bd9d-c124-4531-9d1a-c5e96f2e782b",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.49446353283307065,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('activeCount and pendingCount properties', async t => {\n\tconst limit = pLimit(5);\n\tt.is(limit.activeCount, 0);\n\tt.is(limit.pendingCount, 0);\n\n\tconst runningPromise1 = limit(() => delay(1000));\n\tt.is(limit.activeCount, 1);\n\tt.is(limit.pendingCoun"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5134351559540713,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5181234766171282,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5360552072525024,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5361343622207642,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5380411010396806,
+          "matchedEvidenceIds": [
+            "PL08-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 0.16666666666666666,
+        "ndcg": 0.3562071871080222
+      }
+    },
+    {
+      "questionId": "PL09",
+      "question": "What does changing the concurrency property do to the current limit and already queued tasks?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL09-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL09-E2",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 2
+        },
+        {
+          "id": "PL09-E3",
+          "filePath": "index.js",
+          "symbol": "validateConcurrency",
+          "relevance": 1
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "7dd807d7-87e8-4e36-8c41-76502d03a6cb",
+          "filePath": "index.js",
+          "symbolName": "validateConcurrency",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function validateConcurrency(concurrency)",
+          "distance": 0.5483318567275969,
+          "matchedEvidenceIds": [
+            "PL09-E3"
+          ],
+          "relevanceGrade": 1,
+          "contentSnippet": "function validateConcurrency(concurrency) {\n\tif (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n}"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5709432193355776,
+          "matchedEvidenceIds": [
+            "PL09-E1",
+            "PL09-E2",
+            "PL09-E3"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        },
+        {
+          "chunkId": "e7509bc7-e920-4f87-8d00-e08b1a016cc6",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5859500067293636,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map passes sequential indexes for a generator', async t => {\n\tconst limit = pLimit(2);\n\n\tfunction * inputs() {\n\t\tyield 'a';\n\t\tyield 'b';\n\t\tyield 'c';\n\t}\n\n\tconst results = await limit.map(inputs(), (value, index) => `${index}:${value}`);\n\n\tt.dee"
+        },
+        {
+          "chunkId": "69f1bcbf-7af9-4d2a-9531-4132176cbe2e",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.5864471022353424,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#scenarios = []"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.6035419938837286,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "57c05078-dbf6-47c0-9870-ec74c2fba633",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.605293887222542,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\n\tAdd multiple scenarios with different configurations.\n\n\t@param {Array<{name: string, config: object}>} configs - Array of scenario configurations.\n\t@param {Function} fn - The function to benchmark, receives config as parameter.\n\t@param {object} "
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.5766666455144387
+      }
+    },
+    {
+      "questionId": "PL10",
+      "question": "What is the difference between clearQueue behavior when rejectOnClear is false versus true?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL10-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "d1c3a510-3947-4481-8777-d3c05541d54c",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5004907399269698,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('clearQueue rejects pending promises when enabled', async t => {\n\tconst limit = pLimit({concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limit(() => delay(100));\n\tconst pendingPromiseOne = limit(() => delay(10));\n"
+        },
+        {
+          "chunkId": "26dbe2d8-0106-4217-9ee8-fb9c4269eced",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.537348476806373,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('clearQueue', async t => {\n\tconst limit = pLimit(1);\n\n\tArray.from({length: 1}, () => limit(() => delay(1000)));\n\tArray.from({length: 3}, () => limit(() => delay(1000)));\n\n\tawait Promise.resolve();\n\tt.is(limit.pendingCount, 3);\n\tlimit.clearQueue("
+        },
+        {
+          "chunkId": "8a19c4c2-67ca-4d1d-8ab0-37f586235269",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5410070258078847,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('limitFunction exposes clearQueue', async t => {\n\tconst limitedFunction = limitFunction(() => delay(20), {concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limitedFunction();\n\tconst pendingPromise = limitedFunction"
+        },
+        {
+          "chunkId": "cc5b9b1a-44cd-45ff-8fab-4184bcc2cab4",
+          "filePath": "readme.md",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5675834377060264,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "Discard pending promises that are waiting to run.\n\nThis might be useful if you want to tear down the queue at the end of your program's lifecycle or discard any function calls referencing an intermediary state of your app.\n\nNote: This does not cancel"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5755707576530713,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5781829655170411,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        }
+      ],
+      "metrics": {
+        "recall": 0,
+        "mrr": 0,
+        "ndcg": 0
+      }
+    },
+    {
+      "questionId": "PL11",
+      "question": "How does limit.map pass each iterable item and its index to the mapper, and how are results returned?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL11-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL11-E2",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4879450492826124,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "9c93998f-08b8-46fa-be17-a7d08d8ec7d5",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.49332615693367377,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map accepts an iterable (set)', async t => {\n\tconst limit = pLimit(2);\n\tconst inputs = new Set([1, 2, 3, 4]);\n\n\tconst results = await limit.map(inputs, input => input * 2); // eslint-disable-line unicorn/no-array-method-this-argument\n\n\tt.deepEq"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.511524765996648,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5211751163005829,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "326db0eb-ca47-459c-9c17-41af27c60cb0",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5253537312360833,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map rejects with the mapper error', async t => {\n\tconst limit = pLimit(2);\n\tconst error = new Error('🦄');\n\n\tawait t.throwsAsync(limit.map([1, 2, 3], async value => {\n\t\tif (value === 2) {\n\t\t\tthrow error;\n\t\t}\n\n\t\treturn value;\n\t}), {is: error});\n"
+        },
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.526776807914089,
+          "matchedEvidenceIds": [
+            "PL11-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        }
+      ],
+      "metrics": {
+        "recall": 0.5,
+        "mrr": 0.16666666666666666,
+        "ndcg": 0.280390126950546
+      }
+    },
+    {
+      "questionId": "PL12",
+      "question": "What does limit.map do if iterating the input throws after some tasks have already been scheduled?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL12-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "48a1a278-8ea8-41f2-a8aa-d005a4f31ed8",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.516044811848832,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map rejects immediately with the iterable error and still runs already scheduled tasks', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('Iterator failed');\n\tconst completed = [];\n\n\tfunction * inputs() {\n\t\tyield 1;\n\t\tyield 2;\n\t\t"
+        },
+        {
+          "chunkId": "144aee17-36e1-46b7-86a0-bd8c20abd1a7",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.529941487009062,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map does not leave unhandled rejections when the iterable throws', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('Iterator failed');\n\n\tfunction * inputs() {\n\t\tyield 1;\n\t\tyield 2;\n\t\tyield 3;\n\t\tthrow error;\n\t}\n\n\tawait t.throwsAs"
+        },
+        {
+          "chunkId": "326db0eb-ca47-459c-9c17-41af27c60cb0",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5357067031510714,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map rejects with the mapper error', async t => {\n\tconst limit = pLimit(2);\n\tconst error = new Error('🦄');\n\n\tawait t.throwsAsync(limit.map([1, 2, 3], async value => {\n\t\tif (value === 2) {\n\t\t\tthrow error;\n\t\t}\n\n\t\treturn value;\n\t}), {is: error});\n"
+        },
+        {
+          "chunkId": "8a19c4c2-67ca-4d1d-8ab0-37f586235269",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.537596512221978,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('limitFunction exposes clearQueue', async t => {\n\tconst limitedFunction = limitFunction(() => delay(20), {concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limitedFunction();\n\tconst pendingPromise = limitedFunction"
+        },
+        {
+          "chunkId": "c4c3c771-6898-43a1-8f8b-fdcc990bbec0",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5406379425905901,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map rejects with the iterable error when it throws before the first item', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('Iterator failed');\n\n\tconst inputs = {\n\t\t* [Symbol.iterator]() { // eslint-disable-line require-yield\n\t\t\t"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5453758429326869,
+          "matchedEvidenceIds": [
+            "PL12-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 0.16666666666666666,
+        "ndcg": 0.3562071871080222
+      }
+    },
+    {
+      "questionId": "PL13",
+      "question": "How does limitFunction create and return a function whose calls share a concurrency limit?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL13-E1",
+          "filePath": "index.js",
+          "symbol": "limitFunction",
+          "relevance": 3
+        },
+        {
+          "id": "PL13-E2",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.3821791594570991,
+          "matchedEvidenceIds": [
+            "PL13-E1",
+            "PL13-E2"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.3931761873049391,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4162419190262511,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4184327222785047,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4281286682929155,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.45176724461902673,
+          "matchedEvidenceIds": [
+            "PL13-E2"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.7871546029909718
+      }
+    },
+    {
+      "questionId": "PL14",
+      "question": "How does the function returned by limitFunction expose queue clearing?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL14-E1",
+          "filePath": "index.js",
+          "symbol": "limitFunction",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.4376504253640835,
+          "matchedEvidenceIds": [
+            "PL14-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4529455360239105,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.46405357122420887,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "8a19c4c2-67ca-4d1d-8ab0-37f586235269",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4811456954137753,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('limitFunction exposes clearQueue', async t => {\n\tconst limitedFunction = limitFunction(() => delay(20), {concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limitedFunction();\n\tconst pendingPromise = limitedFunction"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.49960926177446385,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "cc5b9b1a-44cd-45ff-8fab-4184bcc2cab4",
+          "filePath": "readme.md",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5002098679417442,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "Discard pending promises that are waiting to run.\n\nThis might be useful if you want to tear down the queue at the end of your program's lifecycle or discard any function calls referencing an intermediary state of your app.\n\nNote: This does not cancel"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      }
+    },
+    {
+      "questionId": "PL15",
+      "question": "Which properties and methods are included in the TypeScript LimitFunction type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL15-E1",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.31968867778778076,
+          "matchedEvidenceIds": [
+            "PL15-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.334369281865996,
+          "matchedEvidenceIds": [
+            "PL15-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.3669274668054252,
+          "matchedEvidenceIds": [
+            "PL15-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.38781827688217163,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.3962532338130361,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4113779067993164,
+          "matchedEvidenceIds": [
+            "PL15-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      }
+    },
+    {
+      "questionId": "PL16",
+      "question": "Which configuration options are represented by the TypeScript Options type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL16-E1",
+          "filePath": "index.d.ts",
+          "symbol": "Options",
+          "relevance": 3
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "350c0644-959d-4e1b-947c-1b0ecd3882a3",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.43239996240139134,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#options"
+        },
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.46161225666926664,
+          "matchedEvidenceIds": [
+            "PL16-E1"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "69f1bcbf-7af9-4d2a-9531-4132176cbe2e",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.4687518915162052,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#scenarios = []"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.47274261713027954,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4787858724594116,
+          "matchedEvidenceIds": [
+            "PL16-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "476af619-7971-4446-99a4-3396f49b101f",
+          "filePath": "scripts/benchmarker.js",
+          "symbolName": "BenchmarkSuite member",
+          "symbolType": "class_member",
+          "className": "BenchmarkSuite",
+          "functionSignature": null,
+          "distance": 0.47932642698287964,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "#benchmarker"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575
+      }
+    },
+    {
+      "questionId": "PL17",
+      "question": "What is the TypeScript signature and return type of the default pLimit export?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL17-E1",
+          "filePath": "index.d.ts",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL17-E2",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 2
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.41997257352038675,
+          "matchedEvidenceIds": [
+            "PL17-E2"
+          ],
+          "relevanceGrade": 2,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4250985383987427,
+          "matchedEvidenceIds": [
+            "PL17-E1",
+            "PL17-E2"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.43129467964172363,
+          "matchedEvidenceIds": [
+            "PL17-E2"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4550822973251343,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.46780571149621575,
+          "matchedEvidenceIds": [
+            "PL17-E2"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.47398717468862095,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.8339912323981488
+      }
+    },
+    {
+      "questionId": "PL18",
+      "question": "What is the TypeScript signature of limitFunction, including the extra property on its returned function?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL18-E1",
+          "filePath": "index.d.ts",
+          "symbol": "limitFunction",
+          "relevance": 3
+        },
+        {
+          "id": "PL18-E2",
+          "filePath": "index.d.ts",
+          "symbol": "Options",
+          "relevance": 2
+        },
+        {
+          "id": "PL18-E3",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 1
+        }
+      ],
+      "retrievedResults": [
+        {
+          "chunkId": "b670446a-6875-48d6-b809-7d2587b43374",
+          "filePath": "index.d.ts",
+          "symbolName": "limitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4003980517150122,
+          "matchedEvidenceIds": [
+            "PL18-E1",
+            "PL18-E2",
+            "PL18-E3"
+          ],
+          "relevanceGrade": 3,
+          "contentSnippet": "export function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): ((...arguments_: Arguments) => Promise<ReturnType>) & Pick<LimitFunction, 'clearQueue'>;"
+        },
+        {
+          "chunkId": "25c55000-35fb-4202-98a8-e653b8a06b6e",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.41136330366134644,
+          "matchedEvidenceIds": [
+            "PL18-E3"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "...arguments_: Arguments\n\t): Promise<ReturnType>;\n};"
+        },
+        {
+          "chunkId": "67ec082c-9347-4aab-8ccb-a801c31aefbf",
+          "filePath": "index.d.ts",
+          "symbolName": "LimitFunction",
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.43685021620095965,
+          "matchedEvidenceIds": [
+            "PL18-E3"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount:"
+        },
+        {
+          "chunkId": "b3e68d9a-cd02-42b3-95f1-7f54ec545cca",
+          "filePath": "index.js",
+          "symbolName": "limitFunction",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function limitFunction(function_, options)",
+          "distance": 0.4485079749084666,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\tconst limitedFunction = (...arguments_) => limit(() => function_(...arguments_));\n\tObject.defineProperty(limitedFunction, 'clearQueue', {\n\t\tvalue: limit.clearQueue,"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.4620171785354614,
+          "matchedEvidenceIds": [
+            "PL18-E1"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.494335412979126,
+          "matchedEvidenceIds": [
+            "PL18-E2",
+            "PL18-E3"
+          ],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        }
+      ],
+      "metrics": {
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.7452525342261976
+      }
+    },
+    {
+      "questionId": "PL19",
+      "question": "Does p-limit persist queued tasks to Redis or another external database so they survive a process restart?",
+      "answerable": false,
+      "expectedEvidence": [],
+      "retrievedResults": [
+        {
+          "chunkId": "8a19c4c2-67ca-4d1d-8ab0-37f586235269",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.57685838868792,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('limitFunction exposes clearQueue', async t => {\n\tconst limitedFunction = limitFunction(() => delay(20), {concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limitedFunction();\n\tconst pendingPromise = limitedFunction"
+        },
+        {
+          "chunkId": "2052e1fb-c534-4ae4-89fc-c450f2b9546b",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5775522497234017,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('does not ignore errors', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('🦄');\n\n\tconst promises = [\n\t\tlimit(async () => {\n\t\t\tawait delay(30);\n\t\t}),\n\t\tlimit(async () => {\n\t\t\tawait delay(80);\n\t\t\tthrow error;\n\t\t}),\n\t\tlimit(async ("
+        },
+        {
+          "chunkId": "be74bd9d-c124-4531-9d1a-c5e96f2e782b",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5846187820803386,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('activeCount and pendingCount properties', async t => {\n\tconst limit = pLimit(5);\n\tt.is(limit.activeCount, 0);\n\tt.is(limit.pendingCount, 0);\n\n\tconst runningPromise1 = limit(() => delay(1000));\n\tt.is(limit.activeCount, 1);\n\tt.is(limit.pendingCoun"
+        },
+        {
+          "chunkId": "d1c3a510-3947-4481-8777-d3c05541d54c",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5858770485483719,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "testClearQueueRejects('clearQueue rejects pending promises when enabled', async t => {\n\tconst limit = pLimit({concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limit(() => delay(100));\n\tconst pendingPromiseOne = limit(() => delay(10));\n"
+        },
+        {
+          "chunkId": "26dbe2d8-0106-4217-9ee8-fb9c4269eced",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5891145169734955,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('clearQueue', async t => {\n\tconst limit = pLimit(1);\n\n\tArray.from({length: 1}, () => limit(() => delay(1000)));\n\tArray.from({length: 3}, () => limit(() => delay(1000)));\n\n\tawait Promise.resolve();\n\tt.is(limit.pendingCount, 3);\n\tlimit.clearQueue("
+        },
+        {
+          "chunkId": "e7509bc7-e920-4f87-8d00-e08b1a016cc6",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5893427974377388,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map passes sequential indexes for a generator', async t => {\n\tconst limit = pLimit(2);\n\n\tfunction * inputs() {\n\t\tyield 'a';\n\t\tyield 'b';\n\t\tyield 'c';\n\t}\n\n\tconst results = await limit.map(inputs(), (value, index) => `${index}:${value}`);\n\n\tt.dee"
+        }
+      ]
+    },
+    {
+      "questionId": "PL20",
+      "question": "Does p-limit coordinate one shared concurrency limit across multiple Node.js processes or machines?",
+      "answerable": false,
+      "expectedEvidence": [],
+      "retrievedResults": [
+        {
+          "chunkId": "2913bb6a-03f9-4a7c-9a89-4cdf6acb2d12",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 1)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.513093858176835,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "let rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnCl"
+        },
+        {
+          "chunkId": "7dd807d7-87e8-4e36-8c41-76502d03a6cb",
+          "filePath": "index.js",
+          "symbolName": "validateConcurrency",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function validateConcurrency(concurrency)",
+          "distance": 0.5141555973384131,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "function validateConcurrency(concurrency) {\n\tif (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n}"
+        },
+        {
+          "chunkId": "0bfeceae-f02f-4bf1-a3a3-fcb867625d2c",
+          "filePath": "index.js",
+          "symbolName": "pLimit (part 2)",
+          "symbolType": "function",
+          "className": null,
+          "functionSignature": "function pLimit(concurrency)",
+          "distance": 0.5236891962197181,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "Object.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError"
+        },
+        {
+          "chunkId": "657afccb-f478-4ba7-a57e-ad3c73ec4d5d",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.527643084526062,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "export default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()`"
+        },
+        {
+          "chunkId": "e7509bc7-e920-4f87-8d00-e08b1a016cc6",
+          "filePath": "test.js",
+          "symbolName": null,
+          "symbolType": null,
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5310133975140208,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "test('map passes sequential indexes for a generator', async t => {\n\tconst limit = pLimit(2);\n\n\tfunction * inputs() {\n\t\tyield 'a';\n\t\tyield 'b';\n\t\tyield 'c';\n\t}\n\n\tconst results = await limit.map(inputs(), (value, index) => `${index}:${value}`);\n\n\tt.dee"
+        },
+        {
+          "chunkId": "2580d0af-60d0-4d0d-8d92-d1b9048ca02b",
+          "filePath": "index.d.ts",
+          "symbolName": null,
+          "symbolType": "statement",
+          "className": null,
+          "functionSignature": null,
+          "distance": 0.5401560068130493,
+          "matchedEvidenceIds": [],
+          "relevanceGrade": 0,
+          "contentSnippet": "/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control th"
+        }
+      ]
+    }
+  ],
+  "preflightWarnings": [
+    {
+      "type": "dataset_commit_sha_missing",
+      "message": "The dataset does not pin a commit SHA; main is mutable, so scores may not be reproducible across ingestions."
+    }
+  ]
+}
