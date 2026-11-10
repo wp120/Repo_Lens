@@ -282,11 +282,28 @@ async function embedBatchWithRetry(
       const statusCode = getErrorStatusCode(error);
       const isRateLimit = statusCode === 429;
       const isAuthError = statusCode === 401 || statusCode === 403;
+      const isTransient =
+        statusCode === undefined ||
+        statusCode === 408 ||
+        isRateLimit ||
+        (statusCode >= 500 && statusCode <= 599);
 
       if (isAuthError) {
         throw new VoyageEmbeddingError(
           "Voyage AI authentication failed. Check VOYAGE_API_KEY.",
           401,
+          error,
+        );
+      }
+
+      if (!isTransient) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown Voyage AI embedding error";
+        throw new VoyageEmbeddingError(
+          `Voyage AI embedding request failed with status ${statusCode}: ${message}`,
+          statusCode,
           error,
         );
       }
@@ -311,10 +328,7 @@ async function embedBatchWithRetry(
         ) +
         Math.random() * 100;
       const retryAfterMs = isRateLimit ? getRetryAfterMs(error) : undefined;
-      const delay =
-        retryAfterMs !== undefined
-          ? Math.min(retryAfterMs, maxBackoffMs)
-          : exponential;
+      const delay = retryAfterMs ?? exponential;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

@@ -301,7 +301,7 @@ test("generateVoyageEmbeddings aborts immediately without retrying on 401 auth f
   assert.equal(callCount, 1);
 });
 
-test("generateVoyageEmbeddings retries HTTP 429 with bounded backoff and at most four attempts", async () => {
+test("generateVoyageEmbeddings respects Retry-After and makes at most four attempts", async () => {
   let callCount = 0;
   const delays: number[] = [];
   const originalSetTimeout = globalThis.setTimeout;
@@ -353,7 +353,7 @@ test("generateVoyageEmbeddings retries HTTP 429 with bounded backoff and at most
     assert.equal(callCount, 4);
     assert.equal(delays.length, 3);
     for (const delay of delays) {
-      assert.ok(delay <= 50);
+      assert.equal(delay, 1000);
     }
   } finally {
     globalThis.setTimeout = originalSetTimeout;

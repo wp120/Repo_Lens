@@ -1,7 +1,9 @@
 import { prisma } from "../database/prisma.js";
-import { generateVoyageEmbeddings } from "./voyageEmbedding.js";
 import { buildCitationUrl } from "./citationUrls.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
+import { retrieveRelevantChunks } from "./retrieval.js";
+
+export { retrieveRelevantChunks } from "./retrieval.js";
 
 export interface ConversationCitation {
   filePath: string;
@@ -248,45 +250,6 @@ async function requireOwnedConversation(
   if (!conversation) {
     throw new ConversationError("Conversation not found.", 404);
   }
-}
-
-export async function retrieveRelevantChunks(
-  branchIndexId: string,
-  question: string,
-  limit = 15,
-): Promise<RetrievedChunk[]> {
-  const [embedding] = await generateVoyageEmbeddings([question]);
-  if (!embedding) {
-    throw new ConversationError("Could not embed the question.", 502);
-  }
-  const vector = `[${embedding.join(",")}]`;
-  const rows = await prisma.$queryRawUnsafe<
-    Array<{
-      id: string;
-      file_path: string;
-      content: string;
-      start_line: number;
-      end_line: number;
-      commit_sha: string;
-    }>
-  >(
-    `SELECT id::text, file_path, content, start_line, end_line, commit_sha
-       FROM code_chunks
-      WHERE branch_index_id = $1::uuid
-      ORDER BY embedding <=> $2::vector
-      LIMIT $3`,
-    branchIndexId,
-    vector,
-    limit,
-  );
-  return rows.map((row) => ({
-    id: row.id,
-    filePath: row.file_path,
-    content: row.content,
-    startLine: row.start_line,
-    endLine: row.end_line,
-    commitSha: row.commit_sha,
-  }));
 }
 
 async function retrieveAgentEvidence(

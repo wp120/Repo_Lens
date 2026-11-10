@@ -1,0 +1,332 @@
+{
+  "datasetId": "p-limit-main-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "sindresorhus",
+    "name": "p-limit",
+    "url": "https://github.com/sindresorhus/p-limit",
+    "branch": "main",
+    "commitSha": null,
+    "commitPolicy": "Resolve and record the exact main HEAD SHA represented by the indexed branch. This dataset was authored against publicly inspectable main-branch files on 2026-11-10. Since main is mutable, verify the evidence labels against the resolved indexed snapshot before treating scores as a stable baseline."
+  },
+  "questions": [
+    {
+      "id": "PL01",
+      "question": "How does p-limit validate the concurrency value, and which values are accepted?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL01-E1",
+          "filePath": "index.js",
+          "symbol": "validateConcurrency",
+          "relevance": 3
+        },
+        {
+          "id": "PL01-E2",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL02",
+      "question": "How does pLimit handle an options object instead of a numeric concurrency argument?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL02-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL03",
+      "question": "Under what condition does the limiter start the next queued task?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL03-E1",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 3
+        },
+        {
+          "id": "PL03-E2",
+          "filePath": "index.js",
+          "symbol": "enqueue",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL04",
+      "question": "What happens when a limited task finishes, and how does the limiter free capacity?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL04-E1",
+          "filePath": "index.js",
+          "symbol": "next",
+          "relevance": 3
+        },
+        {
+          "id": "PL04-E2",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL05",
+      "question": "How does the run function handle the task's returned promise and the promise returned to the caller?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL05-E1",
+          "filePath": "index.js",
+          "symbol": "run",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL06",
+      "question": "Why does the internal run function catch errors while awaiting a task result?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL06-E1",
+          "filePath": "index.js",
+          "symbol": "run",
+          "relevance": 3
+        },
+        {
+          "id": "PL06-E2",
+          "filePath": "index.js",
+          "symbol": "next",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL07",
+      "question": "How does the returned limit function enqueue a call and pass the function's arguments through?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL07-E1",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 3
+        },
+        {
+          "id": "PL07-E2",
+          "filePath": "index.js",
+          "symbol": "enqueue",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL08",
+      "question": "How are activeCount and pendingCount exposed by the limiter?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL08-E1",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL09",
+      "question": "What does changing the concurrency property do to the current limit and already queued tasks?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL09-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL09-E2",
+          "filePath": "index.js",
+          "symbol": "resumeNext",
+          "relevance": 2
+        },
+        {
+          "id": "PL09-E3",
+          "filePath": "index.js",
+          "symbol": "validateConcurrency",
+          "relevance": 1
+        }
+      ]
+    },
+    {
+      "id": "PL10",
+      "question": "What is the difference between clearQueue behavior when rejectOnClear is false versus true?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL10-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL11",
+      "question": "How does limit.map pass each iterable item and its index to the mapper, and how are results returned?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL11-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL11-E2",
+          "filePath": "index.js",
+          "symbol": "generator",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL12",
+      "question": "What does limit.map do if iterating the input throws after some tasks have already been scheduled?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL12-E1",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL13",
+      "question": "How does limitFunction create and return a function whose calls share a concurrency limit?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL13-E1",
+          "filePath": "index.js",
+          "symbol": "limitFunction",
+          "relevance": 3
+        },
+        {
+          "id": "PL13-E2",
+          "filePath": "index.js",
+          "symbol": "pLimit",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL14",
+      "question": "How does the function returned by limitFunction expose queue clearing?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL14-E1",
+          "filePath": "index.js",
+          "symbol": "limitFunction",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL15",
+      "question": "Which properties and methods are included in the TypeScript LimitFunction type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL15-E1",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL16",
+      "question": "Which configuration options are represented by the TypeScript Options type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL16-E1",
+          "filePath": "index.d.ts",
+          "symbol": "Options",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "PL17",
+      "question": "What is the TypeScript signature and return type of the default pLimit export?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL17-E1",
+          "filePath": "index.d.ts",
+          "symbol": "pLimit",
+          "relevance": 3
+        },
+        {
+          "id": "PL17-E2",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "PL18",
+      "question": "What is the TypeScript signature of limitFunction, including the extra property on its returned function?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "PL18-E1",
+          "filePath": "index.d.ts",
+          "symbol": "limitFunction",
+          "relevance": 3
+        },
+        {
+          "id": "PL18-E2",
+          "filePath": "index.d.ts",
+          "symbol": "Options",
+          "relevance": 2
+        },
+        {
+          "id": "PL18-E3",
+          "filePath": "index.d.ts",
+          "symbol": "LimitFunction",
+          "relevance": 1
+        }
+      ]
+    },
+    {
+      "id": "PL19",
+      "question": "Does p-limit persist queued tasks to Redis or another external database so they survive a process restart?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "PL20",
+      "question": "Does p-limit coordinate one shared concurrency limit across multiple Node.js processes or machines?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}
