@@ -1,0 +1,332 @@
+{
+  "datasetId": "go-chi-chi-master-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "go-chi",
+    "name": "chi",
+    "url": "https://github.com/go-chi/chi",
+    "branch": "master",
+    "commitSha": null,
+    "commitPolicy": "Resolve and record the exact master HEAD SHA represented by the indexed branch. This dataset was authored against publicly inspectable source files on 2026-11-10. Since master is mutable, verify expected evidence labels against the exact indexed snapshot before treating scores as a stable baseline."
+  },
+  "questions": [
+    {
+      "id": "CHI01",
+      "question": "How is a new Mux initialized, and how does it prepare the pool for routing contexts?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI01-E1",
+          "filePath": "mux.go",
+          "symbol": "NewMux",
+          "relevance": 3
+        },
+        {
+          "id": "CHI01-E2",
+          "filePath": "context.go",
+          "symbol": "NewRouteContext",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI02",
+      "question": "How does Mux.ServeHTTP obtain, initialize, and reuse a routing context for a request?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI02-E1",
+          "filePath": "mux.go",
+          "symbol": "ServeHTTP",
+          "relevance": 3
+        },
+        {
+          "id": "CHI02-E2",
+          "filePath": "context.go",
+          "symbol": "Context",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI03",
+      "question": "When are router-level middleware handlers executed relative to route matching?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI03-E1",
+          "filePath": "mux.go",
+          "symbol": "Use",
+          "relevance": 3
+        },
+        {
+          "id": "CHI03-E2",
+          "filePath": "mux.go",
+          "symbol": "ServeHTTP",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI04",
+      "question": "How does With create an inline router and preserve middleware inherited from an existing inline router?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI04-E1",
+          "filePath": "mux.go",
+          "symbol": "With",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI05",
+      "question": "How does Group create a router for a group of handlers that share additional middleware?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI05-E1",
+          "filePath": "mux.go",
+          "symbol": "Group",
+          "relevance": 3
+        },
+        {
+          "id": "CHI05-E2",
+          "filePath": "mux.go",
+          "symbol": "With",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI06",
+      "question": "How does Route construct and mount a subrouter, and what happens when its callback is nil?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI06-E1",
+          "filePath": "mux.go",
+          "symbol": "Route",
+          "relevance": 3
+        },
+        {
+          "id": "CHI06-E2",
+          "filePath": "chi.go",
+          "symbol": "NewRouter",
+          "relevance": 1
+        },
+        {
+          "id": "CHI06-E3",
+          "filePath": "mux.go",
+          "symbol": "Mount",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI07",
+      "question": "What checks does Mount perform before attaching a handler or subrouter?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI07-E1",
+          "filePath": "mux.go",
+          "symbol": "Mount",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI08",
+      "question": "How does Mount continue routing into a mounted subrouter and handle the parent route context?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI08-E1",
+          "filePath": "mux.go",
+          "symbol": "Mount",
+          "relevance": 3
+        },
+        {
+          "id": "CHI08-E2",
+          "filePath": "mux.go",
+          "symbol": "routeHTTP",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI09",
+      "question": "How can an application replace the default handler for paths that do not match any route?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI09-E1",
+          "filePath": "mux.go",
+          "symbol": "NotFound",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI10",
+      "question": "How can an application configure a custom handler for a path that matches but does not support the requested HTTP method?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI10-E1",
+          "filePath": "mux.go",
+          "symbol": "MethodNotAllowed",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI11",
+      "question": "What validation does the internal handle method perform on a route pattern before inserting it into the routing tree?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI11-E1",
+          "filePath": "mux.go",
+          "symbol": "handle",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI12",
+      "question": "How does routeHTTP determine the request path and HTTP method before searching the routing tree?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI12-E1",
+          "filePath": "mux.go",
+          "symbol": "routeHTTP",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI13",
+      "question": "What happens after routeHTTP finds a matching route, and how are matched parameters exposed on the HTTP request?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI13-E1",
+          "filePath": "mux.go",
+          "symbol": "routeHTTP",
+          "relevance": 3
+        },
+        {
+          "id": "CHI13-E2",
+          "filePath": "context.go",
+          "symbol": "RoutePattern",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI14",
+      "question": "What does NewRouter return, and how is it related to NewMux?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI14-E1",
+          "filePath": "chi.go",
+          "symbol": "NewRouter",
+          "relevance": 3
+        },
+        {
+          "id": "CHI14-E2",
+          "filePath": "mux.go",
+          "symbol": "NewMux",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI15",
+      "question": "Which standard library interfaces does the Router interface embed, and what routing capabilities does it expose?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI15-E1",
+          "filePath": "chi.go",
+          "symbol": "Router",
+          "relevance": 3
+        },
+        {
+          "id": "CHI15-E2",
+          "filePath": "chi.go",
+          "symbol": "Routes",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI16",
+      "question": "How does RouteContext retrieve the chi routing context from a context.Context value?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI16-E1",
+          "filePath": "context.go",
+          "symbol": "RouteContext",
+          "relevance": 3
+        },
+        {
+          "id": "CHI16-E2",
+          "filePath": "context.go",
+          "symbol": "RouteCtxKey",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI17",
+      "question": "How does Context.Clone detach the copied routing context from the request context and protect its slice data from reuse?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI17-E1",
+          "filePath": "context.go",
+          "symbol": "Clone",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "CHI18",
+      "question": "How does Context.RoutePattern combine the route pattern stack and normalize wildcard segments and trailing slashes?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "CHI18-E1",
+          "filePath": "context.go",
+          "symbol": "RoutePattern",
+          "relevance": 3
+        },
+        {
+          "id": "CHI18-E2",
+          "filePath": "context.go",
+          "symbol": "replaceWildcards",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "CHI19",
+      "question": "Does the core chi router persist route registrations to a SQL database and reload them after a process restart?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "CHI20",
+      "question": "Does chi coordinate one shared request-concurrency limit across separate processes or machines without an external system?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

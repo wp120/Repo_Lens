@@ -1,0 +1,174 @@
+{
+  "datasetId": "scribejava-master-retrieval-eval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "scribejava",
+    "name": "scribejava",
+    "url": "https://github.com/scribejava/scribejava",
+    "branch": "master",
+    "commitSha": null,
+    "commitPolicy": "Resolve and record the exact master HEAD SHA represented by the indexed branch. Verify expected evidence against that snapshot before treating scores as a stable baseline."
+  },
+  "questions": [
+    {
+      "id": "SC01",
+      "question": "How does the README demonstrate constructing an OAuth service using ServiceBuilder and a provider API?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC01-E1", "filePath": "README.md", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC02",
+      "question": "Which OAuth 2.0 authorization flows does ScribeJava advertise support for?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC02-E1", "filePath": "README.md", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC03",
+      "question": "Which HTTP client implementations can be integrated with ScribeJava according to its README?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC03-E1", "filePath": "README.md", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC04",
+      "question": "How does the GitHubApi class implement the singleton instance pattern?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC04-E1", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "InstanceHolder", "relevance": 3},
+        {"id": "SC04-E2", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "instance", "relevance": 2}
+      ]
+    },
+    {
+      "id": "SC05",
+      "question": "What HTTP verb does GitHubApi use for its access token endpoint?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC05-E1", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "getAccessTokenVerb", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC06",
+      "question": "What authorization and access token URLs does GitHubApi configure?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC06-E1", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "getAccessTokenEndpoint", "relevance": 3},
+        {"id": "SC06-E2", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "getAuthorizationBaseUrl", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC07",
+      "question": "Which access token extractor does GitHubApi return?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC07-E1", "filePath": "scribejava-apis/src/main/java/com/github/scribejava/apis/GitHubApi.java", "symbol": "getAccessTokenExtractor", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC08",
+      "question": "How does the default JDKHttpClient constructor obtain its configuration?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC08-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "JDKHttpClient", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC09",
+      "question": "How can a caller provide a custom configuration when constructing JDKHttpClient?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC09-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "JDKHttpClient", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC10",
+      "question": "Which payload types are accepted by the asynchronous executeAsync overloads in JDKHttpClient?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC10-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "executeAsync", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC11",
+      "question": "How does JDKHttpClient handle asynchronous requests with a File payload?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC11-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "executeAsync", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC12",
+      "question": "How does JDKHttpClient.doExecuteAsync handle successful responses, converters, callbacks, and exceptions?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC12-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "doExecuteAsync", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC13",
+      "question": "How does JDKHttpClient.doExecute configure an HTTP connection, including redirects, timeouts, headers, and request body?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC13-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "doExecute", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC14",
+      "question": "How does JDKHttpClient decide between different request body representations?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC14-E1", "filePath": "scribejava-core/src/main/java/com/github/scribejava/core/httpclient/jdk/JDKHttpClient.java", "symbol": "BodyType", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC15",
+      "question": "How does OkHttpHttpClient create and enqueue asynchronous requests?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC15-E1", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "doExecuteAsync", "relevance": 3},
+        {"id": "SC15-E2", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "createCall", "relevance": 2}
+      ]
+    },
+    {
+      "id": "SC16",
+      "question": "How does OkHttpHttpClient construct requests with HTTP methods, headers, user agents, and request bodies?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC16-E1", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "createCall", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC17",
+      "question": "How does OkHttpHttpClient handle multipart payloads in its synchronous and asynchronous execution methods?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC17-E1", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "executeAsync", "relevance": 3},
+        {"id": "SC17-E2", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "execute", "relevance": 2}
+      ]
+    },
+    {
+      "id": "SC18",
+      "question": "How does OkHttpHttpClient.convertResponse convert an OkHttp response into ScribeJava's Response object?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "SC18-E1", "filePath": "scribejava-httpclient-okhttp/src/main/java/com/github/scribejava/httpclient/okhttp/OkHttpHttpClient.java", "symbol": "convertResponse", "relevance": 3}
+      ]
+    },
+    {
+      "id": "SC19",
+      "question": "Does ScribeJava automatically persist OAuth access tokens to a shared SQL database?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "SC20",
+      "question": "Does ScribeJava provide a built-in distributed token synchronization service across multiple application instances?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

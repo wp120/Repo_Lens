@@ -1,0 +1,187 @@
+
+{
+  "datasetId": "ruby-jwt-main-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "jwt",
+    "name": "ruby-jwt",
+    "url": "https://github.com/jwt/ruby-jwt",
+    "branch": "main",
+    "commitSha": null
+  },
+  "questions": [
+    {
+      "id": "JWT01",
+      "question": "How does JWT.encode construct an encoded JWT from a payload, signing key, algorithm and additional header fields?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT01-E1", "filePath": "lib/jwt.rb", "symbol": "encode", "relevance": 3},
+        {"id": "JWT01-E2", "filePath": "lib/jwt/encode.rb", "symbol": "Encode", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT02",
+      "question": "How does JWT.decode initialize the Decode object and combine global decoding configuration with per-call options?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT02-E1", "filePath": "lib/jwt.rb", "symbol": "decode", "relevance": 3},
+        {"id": "JWT02-E2", "filePath": "lib/jwt/decode.rb", "symbol": "initialize", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT03",
+      "question": "How does Decode initialize an EncodedToken and handle a nil JWT?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT03-E1", "filePath": "lib/jwt/decode.rb", "symbol": "initialize", "relevance": 3},
+        {"id": "JWT03-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "initialize", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT04",
+      "question": "What sequence of operations does Decode.decode_segments perform when signature verification is enabled?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT04-E1", "filePath": "lib/jwt/decode.rb", "symbol": "decode_segments", "relevance": 3},
+        {"id": "JWT04-E2", "filePath": "lib/jwt/decode.rb", "symbol": "verify_signature", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT05",
+      "question": "How does Decode.verify_algo validate the algorithm specified in the token header against the allowed algorithms?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT05-E1", "filePath": "lib/jwt/decode.rb", "symbol": "verify_algo", "relevance": 3},
+        {"id": "JWT05-E2", "filePath": "lib/jwt/decode.rb", "symbol": "allowed_and_valid_algorithms", "relevance": 2},
+        {"id": "JWT05-E3", "filePath": "lib/jwt/decode.rb", "symbol": "given_algorithms", "relevance": 1}
+      ]
+    },
+    {
+      "id": "JWT06",
+      "question": "How does Decode.set_key resolve verification keys using a keyfinder, JWKS configuration or X.509 certificate options?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT06-E1", "filePath": "lib/jwt/decode.rb", "symbol": "set_key", "relevance": 3},
+        {"id": "JWT06-E2", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "call", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT07",
+      "question": "How does Decode.validate_segment_count ensure that a JWT has an acceptable number of segments?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT07-E1", "filePath": "lib/jwt/decode.rb", "symbol": "validate_segment_count!", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JWT08",
+      "question": "How does Decode handle the none algorithm during algorithm and signature verification?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT08-E1", "filePath": "lib/jwt/decode.rb", "symbol": "none_algorithm?", "relevance": 3},
+        {"id": "JWT08-E2", "filePath": "lib/jwt/decode.rb", "symbol": "verify_signature", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT09",
+      "question": "How does EncodedToken initialize its internal state and split an encoded JWT into its header, payload and signature segments?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT09-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "initialize", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JWT10",
+      "question": "What conditions must be satisfied before EncodedToken.payload can return the decoded payload, and how does unverified_payload differ?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT10-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "payload", "relevance": 3},
+        {"id": "JWT10-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "unverified_payload", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT11",
+      "question": "How does EncodedToken.verify! coordinate signature verification and claims verification?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT11-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "verify!", "relevance": 3},
+        {"id": "JWT11-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "verify_signature!", "relevance": 2},
+        {"id": "JWT11-E3", "filePath": "lib/jwt/encoded_token.rb", "symbol": "verify_claims!", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT12",
+      "question": "How does EncodedToken.valid? determine whether both a token's signature and claims are valid?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT12-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "valid?", "relevance": 3},
+        {"id": "JWT12-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "valid_signature?", "relevance": 2},
+        {"id": "JWT12-E3", "filePath": "lib/jwt/encoded_token.rb", "symbol": "valid_claims?", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT13",
+      "question": "How does EncodedToken.valid_signature? select verification algorithms and keys, including support for a key finder?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT13-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "valid_signature?", "relevance": 3},
+        {"id": "JWT13-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "signing_input", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT14",
+      "question": "How does EncodedToken.verify_claims! update its internal verification state when claim validation succeeds or raises an exception?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT14-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "verify_claims!", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JWT15",
+      "question": "What is the difference between EncodedToken.claim_errors and EncodedToken.valid_claims?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT15-E1", "filePath": "lib/jwt/encoded_token.rb", "symbol": "claim_errors", "relevance": 3},
+        {"id": "JWT15-E2", "filePath": "lib/jwt/encoded_token.rb", "symbol": "valid_claims?", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JWT16",
+      "question": "How does JWT::JWK::KeyFinder initialize its JWKS source and configure the key fields used for matching?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT16-E1", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "initialize", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JWT17",
+      "question": "How does JWT::JWK::KeyFinder.key_for validate a key identifier and return the corresponding verification key?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT17-E1", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "key_for", "relevance": 3},
+        {"id": "JWT17-E2", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "resolve_key", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT18",
+      "question": "How does JWT::JWK::KeyFinder.call search configured key fields, handle missing key identifiers, and retry key resolution?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JWT18-E1", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "call", "relevance": 3},
+        {"id": "JWT18-E2", "filePath": "lib/jwt/jwk/key_finder.rb", "symbol": "resolve_key", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JWT19",
+      "question": "Does ruby-jwt automatically persist issued JWT tokens and their refresh state to a SQL database?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "JWT20",
+      "question": "Does ruby-jwt automatically synchronize JWKS cache updates across independent application processes without application-provided coordination?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

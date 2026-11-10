@@ -1,5 +1,5 @@
 import "../src/config/loadEnv.js";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { normalize as normalizePosix } from "node:path/posix";
 import { fileURLToPath } from "node:url";
@@ -13,38 +13,29 @@ import { retrieveRelevantChunks } from "../src/services/retrieval.js";
 import type { RetrievedCodeChunk } from "../src/services/retrieval.js";
 import {
   calculateMacroMetrics,
+  calculateMultiRepositoryMetrics,
   calculateQuestionMetrics,
+  getOfficialMultiRepositoryMetrics,
+  type AggregateMetrics,
   type QuestionMetrics,
 } from "./metrics.js";
+import {
+  normalizeDataset,
+  type Dataset,
+  type DatasetEvidence,
+  type DatasetQuestion,
+} from "./datasets.js";
 
-interface DatasetEvidence {
-  id: string;
-  filePath: string;
-  symbol?: string;
-  relevance: number;
+const datasetDirectory = fileURLToPath(new URL("./dataset/", import.meta.url));
+const resultsDirectory = fileURLToPath(new URL("./results/", import.meta.url));
+
+interface LoadedDataset {
+  fileName: string;
+  dataset?: Dataset;
+  failureReason?: string;
 }
 
-interface DatasetQuestion {
-  id: string;
-  question: string;
-  answerable: boolean;
-  expectedEvidence: DatasetEvidence[];
-}
-
-interface Dataset {
-  datasetId: string;
-  version: string;
-  repository: {
-    owner: string;
-    name: string;
-    url: string;
-    branch: string;
-    commitSha: string | null;
-  };
-  questions: DatasetQuestion[];
-}
-
-interface EvaluationResult {
+interface QuestionResult {
   questionId: string;
   question: string;
   answerable: boolean;
@@ -69,19 +60,36 @@ interface EvaluationResult {
   error?: string;
 }
 
-const datasetDirectory = fileURLToPath(new URL("./dataset/", import.meta.url));
-const datasetFileNames = [
-  "p-limit-main-retrieval-eval-v1.json",
-  "p-limit-v1.json",
-];
-const resultsDirectory = fileURLToPath(new URL("./results/", import.meta.url));
+interface RepositoryResult {
+  status: "completed" | "failed";
+  questionMetrics: Array<{
+    answerable: boolean;
+    metrics?: QuestionMetrics;
+  }>;
+  datasetFile: string;
+  datasetId?: string;
+  datasetVersion?: string;
+  repository?: {
+    owner: string;
+    name: string;
+    url: string;
+    branch: string;
+    datasetCommitSha: string | null;
+    indexedCommitSha: string | null;
+  };
+  branchIndexId: string | null;
+  answerableQuestionCount: number;
+  unanswerableQuestionCount: number;
+  aggregateMetrics: Record<string, number> | null;
+  questions: QuestionResult[];
+  preflightWarnings: Array<Record<string, unknown>>;
+  failureReason?: string;
+}
 
 function parseTopK(args: string[]): number {
   let value: string | undefined;
-
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-
     if (argument.startsWith("--top-k=") || argument.startsWith("--topK=")) {
       value = argument.slice(argument.indexOf("=") + 1);
     } else if (argument === "--top-k" || argument === "--topK") {
@@ -91,12 +99,10 @@ function parseTopK(args: string[]): number {
       throw new Error(`Unknown evaluation argument: ${argument}`);
     }
   }
-
   const topK = value === undefined ? 6 : Number(value);
   if (!Number.isSafeInteger(topK) || topK <= 0) {
     throw new Error("--top-k must be a positive integer.");
   }
-
   return topK;
 }
 
@@ -110,130 +116,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validateDataset(value: unknown, sourcePath: string): Dataset {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.repository) ||
-    !Array.isArray(value.questions)
-  ) {
-    throw new Error(`Invalid evaluation dataset structure: ${sourcePath}`);
+async function loadActiveDatasets(): Promise<LoadedDataset[]> {
+  const entries = await readdir(datasetDirectory, { withFileTypes: true });
+  const fileNames = entries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        entry.name.endsWith("-retrieval-eval-v1.json"),
+    )
+    .map((entry) => entry.name)
+    .sort();
+  if (fileNames.length === 0) {
+    throw new Error(
+      `No retrieval datasets ending in "-retrieval-eval-v1.json" were found directly in ${datasetDirectory}.`,
+    );
   }
+  console.log("Multi-repository retrieval evaluation");
+  console.log(`Discovered datasets (${fileNames.length}): ${fileNames.join(", ")}`);
 
-  const repository = value.repository;
-  if (
-    typeof value.datasetId !== "string" ||
-    typeof value.version !== "string" ||
-    typeof repository.owner !== "string" ||
-    typeof repository.name !== "string" ||
-    typeof repository.url !== "string" ||
-    typeof repository.branch !== "string" ||
-    !(typeof repository.commitSha === "string" || repository.commitSha === null)
-  ) {
-    throw new Error(`Invalid dataset metadata: ${sourcePath}`);
-  }
-
-  const questionIds = new Set<string>();
-  for (const [questionIndex, question] of value.questions.entries()) {
-    if (
-      !isRecord(question) ||
-      typeof question.id !== "string" ||
-      typeof question.question !== "string" ||
-      typeof question.answerable !== "boolean" ||
-      !Array.isArray(question.expectedEvidence)
-    ) {
-      throw new Error(
-        `Invalid question at index ${questionIndex} in ${sourcePath}`,
-      );
-    }
-
-    if (questionIds.has(question.id)) {
-      throw new Error(
-        `Duplicate question ID "${question.id}" in ${sourcePath}`,
-      );
-    }
-    questionIds.add(question.id);
-
-    for (const [
-      evidenceIndex,
-      evidence,
-    ] of question.expectedEvidence.entries()) {
-      if (
-        !isRecord(evidence) ||
-        typeof evidence.id !== "string" ||
-        typeof evidence.filePath !== "string" ||
-        typeof evidence.relevance !== "number" ||
-        !Number.isInteger(evidence.relevance) ||
-        evidence.relevance < 1 ||
-        evidence.relevance > 3 ||
-        (evidence.symbol !== undefined && typeof evidence.symbol !== "string")
-      ) {
+  const loaded: LoadedDataset[] = [];
+  for (const fileName of fileNames) {
+    const path = resolve(datasetDirectory, fileName);
+    try {
+      const contents = await readFile(path, "utf8");
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(contents);
+      } catch (error) {
         throw new Error(
-          `Invalid expected evidence for question ${question.id} at index ${evidenceIndex}`,
+          `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
       }
-    }
-
-    if (question.answerable && question.expectedEvidence.length === 0) {
-      throw new Error(
-        `Answerable question ${question.id} has no expected evidence.`,
-      );
-    }
-  }
-
-  if (
-    !value.questions.some(
-      (question) => isRecord(question) && question.answerable === true,
-    )
-  ) {
-    throw new Error(
-      "Dataset contains no answerable questions; cannot calculate retrieval metrics.",
-    );
-  }
-
-  return value as unknown as Dataset;
-}
-
-async function loadDataset(): Promise<Dataset> {
-  let contents: string | undefined;
-  let loadedPath: string | undefined;
-
-  for (const fileName of datasetFileNames) {
-    const candidatePath = resolve(datasetDirectory, fileName);
-    try {
-      contents = await readFile(candidatePath, "utf8");
-      loadedPath = candidatePath;
-      break;
+      loaded.push({
+        fileName,
+        dataset: normalizeDataset(parsed, fileName),
+      });
     } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") {
-        throw error;
-      }
+      const message =
+        isRecord(error) && error.code === "ENOENT"
+          ? `Configured dataset file is missing: ${path}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      loaded.push({ fileName, failureReason: message });
     }
   }
-
-  if (contents === undefined || loadedPath === undefined) {
-    throw new Error(
-      `Dataset not found. Expected one of: ${datasetFileNames
-        .map((fileName) => resolve(datasetDirectory, fileName))
-        .join(", ")}`,
-    );
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(contents);
-  } catch (error) {
-    throw new Error(
-      `Dataset is not valid JSON (${loadedPath}): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
-  }
-
-  const dataset = validateDataset(parsed, loadedPath);
-  console.log(`Loaded dataset: ${loadedPath}`);
-  return dataset;
+  return loaded;
 }
 
 async function resolveBranchIndex(dataset: Dataset) {
@@ -243,46 +172,38 @@ async function resolveBranchIndex(dataset: Dataset) {
       name: dataset.repository.name,
     },
     select: {
-      id: true,
       owner: true,
       name: true,
-      htmlUrl: true,
       branchIndexes: {
         where: { branchName: dataset.repository.branch },
         select: { id: true, branchName: true, status: true },
       },
     },
   });
-
   if (!repository) {
     throw new Error(
       `Repository ${dataset.repository.owner}/${dataset.repository.name} is not present in the RepoLens database.`,
     );
   }
-
   const branch = repository.branchIndexes[0];
   if (!branch) {
     throw new Error(
       `Branch index ${dataset.repository.owner}/${dataset.repository.name}@${dataset.repository.branch} is missing.`,
     );
   }
-
   if (branch.status !== "ready") {
     throw new Error(
       `Branch index ${dataset.repository.owner}/${dataset.repository.name}@${dataset.repository.branch} is ${branch.status}, not ready. Run ingestion separately and retry evaluation.`,
     );
   }
-
-  console.log(`Resolved branch index: ${branch.id}`);
-  return { repository, branch };
+  return { branch };
 }
 
 function hasExactIdentifier(value: string, identifier: string): boolean {
   const escapedIdentifier = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const expression = new RegExp(
+  return new RegExp(
     `(^|[^A-Za-z0-9_$])${escapedIdentifier}($|[^A-Za-z0-9_$])`,
-  );
-  return expression.test(value);
+  ).test(value);
 }
 
 function matchesSymbol(
@@ -292,16 +213,10 @@ function matchesSymbol(
     "symbolName" | "className" | "functionSignature" | "content"
   >,
 ): boolean {
-  if (!expectedSymbol) {
-    return true;
-  }
-
+  if (!expectedSymbol) return true;
   const metadata = [chunk.symbolName, chunk.className, chunk.functionSignature]
     .filter((value): value is string => value !== null)
     .join(" ");
-
-  // Metadata is preferred, but chunk content is also checked when metadata exists
-  // and does not contain the expected symbol.
   return (
     hasExactIdentifier(metadata, expectedSymbol) ||
     hasExactIdentifier(chunk.content, expectedSymbol)
@@ -334,17 +249,14 @@ async function collectPreflightWarnings(
       expectedEvidence.map((evidence) => normalizePath(evidence.filePath)),
     ),
   ];
-
   const corpusFilePaths = await prisma.codeChunk.findMany({
     where: { branchIndexId },
     select: { filePath: true },
     distinct: ["filePath"],
   });
-
   const matchingStoredPaths = corpusFilePaths
     .map((chunk) => chunk.filePath)
     .filter((filePath) => expectedPaths.includes(normalizePath(filePath)));
-
   const corpusChunks =
     matchingStoredPaths.length === 0
       ? []
@@ -364,7 +276,6 @@ async function collectPreflightWarnings(
     corpusChunks.map((chunk) => normalizePath(chunk.filePath)),
   );
   const warnings: Array<Record<string, unknown>> = [];
-
   for (const filePath of expectedPaths) {
     if (!pathSet.has(filePath)) {
       warnings.push({ type: "missing_file_path", filePath });
@@ -375,12 +286,8 @@ async function collectPreflightWarnings(
     string,
     { filePath: string; symbol: string; evidenceIds: string[] }
   >();
-
   for (const evidence of expectedEvidence) {
-    if (!evidence.symbol) {
-      continue;
-    }
-
+    if (!evidence.symbol) continue;
     const key = `${normalizePath(evidence.filePath)}\u0000${evidence.symbol}`;
     const entry = symbolEvidence.get(key) ?? {
       filePath: evidence.filePath,
@@ -390,14 +297,12 @@ async function collectPreflightWarnings(
     entry.evidenceIds.push(evidence.id);
     symbolEvidence.set(key, entry);
   }
-
   for (const evidence of symbolEvidence.values()) {
     const found = corpusChunks.some(
       (chunk) =>
         normalizePath(chunk.filePath) === normalizePath(evidence.filePath) &&
         matchesSymbol(evidence.symbol, chunk),
     );
-
     if (!found) {
       warnings.push({
         type: "missing_symbol",
@@ -414,10 +319,8 @@ async function collectPreflightWarnings(
     distinct: ["commitSha"],
     take: 2,
   });
-
   const indexedCommitSha =
     indexedCommits.length === 1 ? indexedCommits[0].commitSha : null;
-
   if (!indexedCommitSha) {
     warnings.push({
       type: "indexed_commit_sha_unavailable",
@@ -427,26 +330,20 @@ async function collectPreflightWarnings(
           : "No indexed commit SHA is available in code_chunks.",
     });
   }
-
   if (!datasetCommitSha) {
     warnings.push({
       type: "dataset_commit_sha_missing",
       message:
-        "The dataset does not pin a commit SHA; main is mutable, so scores may not be reproducible across ingestions.",
+        "The dataset does not pin a commit SHA; its branch is mutable, so scores may not be reproducible across ingestions.",
     });
   }
-
   return { warnings, indexedCommitSha };
 }
 
 function toReportResult(
   chunk: RetrievedCodeChunk,
   expected: DatasetEvidence[],
-): EvaluationResult["retrievedResults"][number] {
-  const matchedEvidenceIds = expected
-    .filter((evidence) => evidenceMatchesChunk(evidence, chunk))
-    .map((evidence) => evidence.id);
-
+): QuestionResult["retrievedResults"][number] {
   return {
     chunkId: chunk.id,
     filePath: chunk.filePath,
@@ -455,114 +352,231 @@ function toReportResult(
     className: chunk.className,
     functionSignature: chunk.functionSignature,
     distance: chunk.distance,
-    matchedEvidenceIds,
+    matchedEvidenceIds: expected
+      .filter((evidence) => evidenceMatchesChunk(evidence, chunk))
+      .map((evidence) => evidence.id),
     relevanceGrade: 0,
     contentSnippet: chunk.content.slice(0, 250),
   };
 }
 
-async function main(): Promise<void> {
-  const topK = parseTopK(process.argv.slice(2));
-  const dataset = await loadDataset();
-  const { repository, branch } = await resolveBranchIndex(dataset);
-  const { warnings, indexedCommitSha } = await collectPreflightWarnings(
-    branch.id,
-    dataset.questions,
-    dataset.repository.commitSha,
-  );
+function emptyRepositoryResult(loaded: LoadedDataset): RepositoryResult {
+  const dataset = loaded.dataset;
+  const result: RepositoryResult = {
+    datasetFile: loaded.fileName,
+    ...(dataset
+      ? {
+          datasetId: dataset.datasetId,
+          datasetVersion: dataset.version,
+          repository: {
+            owner: dataset.repository.owner,
+            name: dataset.repository.name,
+            url: dataset.repository.url,
+            branch: dataset.repository.branch,
+            datasetCommitSha: dataset.repository.commitSha,
+            indexedCommitSha: null,
+          },
+        }
+      : {}),
+    status: "failed",
+    questionMetrics: [],
+    questions: [],
+    branchIndexId: null,
+    answerableQuestionCount:
+      dataset?.questions.filter((question) => question.answerable).length ?? 0,
+    unanswerableQuestionCount:
+      dataset?.questions.filter((question) => !question.answerable).length ??
+      0,
+    aggregateMetrics: null,
+    preflightWarnings: [],
+  };
+  if (loaded.failureReason) {
+    result.failureReason = loaded.failureReason;
+  } else if (dataset) {
+    result.failureReason = "Repository evaluation did not complete.";
+  }
+  return result;
+}
 
-  const results: EvaluationResult[] = [];
-  const answerableMetrics: QuestionMetrics[] = [];
-  let failed = false;
+async function evaluateDataset(
+  loaded: LoadedDataset,
+  topK: number,
+): Promise<RepositoryResult> {
+  const result = emptyRepositoryResult(loaded);
+  if (!loaded.dataset) return result;
+  const dataset = loaded.dataset;
+  try {
+    const { branch } = await resolveBranchIndex(dataset);
+    result.branchIndexId = branch.id;
+    const { warnings, indexedCommitSha } = await collectPreflightWarnings(
+      branch.id,
+      dataset.questions,
+      dataset.repository.commitSha,
+    );
+    result.preflightWarnings = warnings;
+    if (result.repository) result.repository.indexedCommitSha = indexedCommitSha;
 
-  for (const question of dataset.questions) {
-    const expectedEvidence = question.expectedEvidence;
-
-    try {
-      const retrieved = await retrieveRelevantChunks(
-        branch.id,
-        question.question,
-        topK,
-      );
-
-      const retrievedResults = retrieved.map((chunk) =>
-        toReportResult(chunk, expectedEvidence),
-      );
-
-      let questionMetrics:
-        ReturnType<typeof calculateQuestionMetrics> | undefined;
-
-      if (question.answerable) {
-        questionMetrics = calculateQuestionMetrics(
-          expectedEvidence.map((evidence) => ({
-            id: evidence.id,
-            relevance: evidence.relevance,
-          })),
-          retrievedResults,
+    for (const question of dataset.questions) {
+      try {
+        const retrieved = await retrieveRelevantChunks(
+          branch.id,
+          question.question,
           topK,
         );
-
-        retrievedResults.forEach((result, index) => {
-          result.relevanceGrade = questionMetrics?.relevanceGrades[index] ?? 0;
+        const retrievedResults = retrieved.map((chunk) =>
+          toReportResult(chunk, question.expectedEvidence),
+        );
+        let metrics: QuestionMetrics | undefined;
+        if (question.answerable) {
+          metrics = calculateQuestionMetrics(
+            question.expectedEvidence.map(({ id, relevance }) => ({
+              id,
+              relevance,
+            })),
+            retrievedResults,
+            topK,
+          );
+          retrievedResults.forEach((item, index) => {
+            item.relevanceGrade = metrics?.relevanceGrades[index] ?? 0;
+          });
+          result.questionMetrics.push({ answerable: true, metrics });
+        }
+        result.questions.push({
+          questionId: question.id,
+          question: question.question,
+          answerable: question.answerable,
+          expectedEvidence: question.expectedEvidence,
+          retrievedResults,
+          ...(metrics
+            ? {
+                metrics: {
+                  recall: metrics.recall,
+                  mrr: metrics.mrr,
+                  ndcg: metrics.ndcg,
+                },
+              }
+            : {}),
         });
-        answerableMetrics.push(questionMetrics);
+      } catch (error) {
+        result.questions.push({
+          questionId: question.id,
+          question: question.question,
+          answerable: question.answerable,
+          expectedEvidence: question.expectedEvidence,
+          retrievedResults: [],
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(
+          `Retrieval failed for question ${question.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          { cause: error },
+        );
       }
-
-      results.push({
-        questionId: question.id,
-        question: question.question,
-        answerable: question.answerable,
-        expectedEvidence,
-        retrievedResults,
-        ...(questionMetrics
-          ? {
-              metrics: {
-                recall: questionMetrics.recall,
-                mrr: questionMetrics.mrr,
-                ndcg: questionMetrics.ndcg,
-              },
-            }
-          : {}),
-      });
-    } catch (error) {
-      failed = true;
-      results.push({
-        questionId: question.id,
-        question: question.question,
-        answerable: question.answerable,
-        expectedEvidence,
-        retrievedResults: [],
-        error: error instanceof Error ? error.message : String(error),
-      });
-      break;
     }
-  }
 
-  if (!failed && answerableMetrics.length === 0) {
-    throw new Error(
-      "No answerable questions were evaluated; aggregate metrics cannot be calculated.",
+    result.status = "completed";
+    const repositoryMetrics = calculateMacroMetrics(
+      result.questionMetrics.flatMap((question) =>
+        question.metrics ? [question.metrics] : [],
+      ),
     );
+    result.aggregateMetrics = {
+      [`Recall@${topK}`]: repositoryMetrics.recall,
+      [`MRR@${topK}`]: repositoryMetrics.mrr,
+      [`nDCG@${topK}`]: repositoryMetrics.ndcg,
+    };
+  } catch (error) {
+    result.status = "failed";
+    result.failureReason =
+      error instanceof Error ? error.message : String(error);
+    result.aggregateMetrics = null;
+    result.questions = result.questions.map((question) => ({
+      ...question,
+      metrics: undefined,
+    }));
+    result.questions.forEach((question) => {
+      delete question.metrics;
+    });
+    result.questionMetrics = [];
+  }
+  return result;
+}
+
+function metricReport(
+  metrics: AggregateMetrics | null,
+  topK: number,
+): Record<string, number> | null {
+  return metrics
+    ? {
+        [`Recall@${topK}`]: metrics.recall,
+        [`MRR@${topK}`]: metrics.mrr,
+        [`nDCG@${topK}`]: metrics.ndcg,
+      }
+    : null;
+}
+
+function countQuestions(datasets: LoadedDataset[], answerable: boolean): number {
+  return datasets.reduce(
+    (total, loaded) =>
+      total +
+      (loaded.dataset?.questions.filter(
+        (question) => question.answerable === answerable,
+      ).length ?? 0),
+    0,
+  );
+}
+
+async function main(): Promise<void> {
+  const topK = parseTopK(process.argv.slice(2));
+  const loadedDatasets = await loadActiveDatasets();
+  const repositoryResults: RepositoryResult[] = [];
+
+  for (const loaded of loadedDatasets) {
+    repositoryResults.push(await evaluateDataset(loaded, topK));
   }
 
-  const aggregate = failed ? null : calculateMacroMetrics(answerableMetrics);
+  const multiMetrics = calculateMultiRepositoryMetrics(
+    repositoryResults.map((repository) => ({
+      status: repository.status,
+      questions: repository.questionMetrics,
+    })),
+  );
+  const officialMetrics = getOfficialMultiRepositoryMetrics(
+    multiMetrics,
+    loadedDatasets.length,
+  );
+  const overallAggregateMetrics = officialMetrics
+    ? {
+        questionWeighted: metricReport(officialMetrics.questionWeighted, topK),
+        repositoryWeighted: metricReport(
+          officialMetrics.repositoryWeighted,
+          topK,
+        ),
+        answerableQuestionCount: countQuestions(loadedDatasets, true),
+        unanswerableQuestionCount: countQuestions(loadedDatasets, false),
+        repositoryCount: loadedDatasets.length,
+      }
+    : null;
+  const partialDiagnostics =
+    !officialMetrics && multiMetrics.completedRepositoryCount > 0
+      ? {
+          completedRepositoryCount: multiMetrics.completedRepositoryCount,
+          questionWeighted: metricReport(multiMetrics.questionWeighted, topK),
+          repositoryWeighted: metricReport(multiMetrics.repositoryWeighted, topK),
+        }
+      : undefined;
+
   const timestamp = new Date().toISOString();
   const report = {
     metadata: {
       evaluationTimestamp: timestamp,
-      status: failed ? "failed" : "completed",
-      datasetId: dataset.datasetId,
-      datasetVersion: dataset.version,
-      repository: {
-        owner: repository.owner,
-        name: repository.name,
-        url: dataset.repository.url,
-        branch: branch.branchName,
-        datasetCommitSha: dataset.repository.commitSha,
-        indexedCommitSha,
-      },
-      branchIndexId: branch.id,
-      retrievalMethod: "vector",
+      status: multiMetrics.status,
+      configuredRepositoryCount: loadedDatasets.length,
+      completedRepositoryCount: multiMetrics.completedRepositoryCount,
+      failedRepositoryCount: multiMetrics.failedRepositoryCount,
       topK,
+      retrievalMethod: "vector",
       embedding: {
         provider: "Voyage AI",
         model: VOYAGE_MODEL,
@@ -574,21 +588,25 @@ async function main(): Promise<void> {
         minSpacingMs: voyageRateLimits.minSpacingMs,
         maxWaitMs: voyageRateLimits.maxWaitMs,
       },
-      evaluatedQuestionCount: results.length,
+      datasets: loadedDatasets.map((loaded) => ({
+        fileName: loaded.fileName,
+        ...(loaded.dataset
+          ? {
+              datasetId: loaded.dataset.datasetId,
+              version: loaded.dataset.version,
+              repository: loaded.dataset.repository,
+            }
+          : { failureReason: loaded.failureReason }),
+      })),
     },
-    aggregateMetrics: {
-      answerableQuestionCount: dataset.questions.filter(
-        (question) => question.answerable,
-      ).length,
-      unanswerableQuestionCount: dataset.questions.filter(
-        (question) => !question.answerable,
-      ).length,
-      [`Recall@${topK}`]: aggregate?.recall ?? null,
-      [`MRR@${topK}`]: aggregate?.mrr ?? null,
-      [`nDCG@${topK}`]: aggregate?.ndcg ?? null,
-    },
-    questions: results,
-    preflightWarnings: warnings,
+    overallAggregateMetrics,
+    ...(partialDiagnostics ? { partialDiagnostics } : {}),
+    totalAnswerableQuestionCount: countQuestions(loadedDatasets, true),
+    totalUnanswerableQuestionCount: countQuestions(loadedDatasets, false),
+    repositoryCount: loadedDatasets.length,
+    repositories: repositoryResults.map(
+      ({ questionMetrics: _questionMetrics, ...repository }) => repository,
+    ),
   };
 
   await mkdir(resultsDirectory, { recursive: true });
@@ -598,30 +616,40 @@ async function main(): Promise<void> {
   );
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-  console.log(`Dataset: ${dataset.datasetId} v${dataset.version}`);
-  console.log(
-    `Repository: ${repository.owner}/${repository.name}@${branch.branchName}`,
-  );
-  console.log(
-    `Questions evaluated: ${results.length}/${dataset.questions.length}`,
-  );
-
-  if (aggregate) {
+  console.log(`Repositories: ${loadedDatasets.length}`);
+  console.log(`Completed: ${multiMetrics.completedRepositoryCount}`);
+  console.log(`Failed: ${multiMetrics.failedRepositoryCount}`);
+  if (overallAggregateMetrics) {
+    console.log("\nQuestion-weighted:");
     console.log(
-      `Recall@${topK}: ${aggregate.recall.toFixed(4)} | MRR@${topK}: ${aggregate.mrr.toFixed(4)} | nDCG@${topK}: ${aggregate.ndcg.toFixed(4)}`,
+      `Recall@${topK}: ${overallAggregateMetrics.questionWeighted?.[`Recall@${topK}`]?.toFixed(4)}`,
+    );
+    console.log(
+      `MRR@${topK}: ${overallAggregateMetrics.questionWeighted?.[`MRR@${topK}`]?.toFixed(4)}`,
+    );
+    console.log(
+      `nDCG@${topK}: ${overallAggregateMetrics.questionWeighted?.[`nDCG@${topK}`]?.toFixed(4)}`,
+    );
+    console.log("\nRepository-weighted:");
+    console.log(
+      `Recall@${topK}: ${overallAggregateMetrics.repositoryWeighted?.[`Recall@${topK}`]?.toFixed(4)}`,
+    );
+    console.log(
+      `MRR@${topK}: ${overallAggregateMetrics.repositoryWeighted?.[`MRR@${topK}`]?.toFixed(4)}`,
+    );
+    console.log(
+      `nDCG@${topK}: ${overallAggregateMetrics.repositoryWeighted?.[`nDCG@${topK}`]?.toFixed(4)}`,
     );
   } else {
-    console.error("Evaluation failed; aggregate metrics were not calculated.");
+    for (const repository of repositoryResults) {
+      if (repository.status === "failed") {
+        console.error(
+          `Failed: ${repository.repository ? `${repository.repository.owner}/${repository.repository.name}` : repository.datasetFile} — ${repository.failureReason}`,
+        );
+      }
+    }
   }
-
-  console.log(`Report: ${outputPath}`);
-  for (const warning of warnings) {
-    console.warn(`Preflight warning: ${JSON.stringify(warning)}`);
-  }
-
-  if (failed) {
-    process.exitCode = 1;
-  }
+  console.log(`\nReport: ${outputPath}`);
 }
 
 main()

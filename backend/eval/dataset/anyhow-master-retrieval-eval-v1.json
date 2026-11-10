@@ -1,0 +1,177 @@
+{
+  "datasetId": "anyhow-master-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "dtolnay",
+    "name": "anyhow",
+    "url": "https://github.com/dtolnay/anyhow",
+    "branch": "master",
+    "commitSha": null
+  },
+  "questions": [
+    {
+      "id": "AH01",
+      "question": "What does the anyhow Result type alias represent, and what is its default error type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH01-E1", "filePath": "src/lib.rs", "symbol": "Result", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH02",
+      "question": "Which methods does the Context trait provide, and what is the difference between context and with_context?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH02-E1", "filePath": "src/lib.rs", "symbol": "Context", "relevance": 3},
+        {"id": "AH02-E2", "filePath": "src/context.rs", "symbol": "with_context", "relevance": 2}
+      ]
+    },
+    {
+      "id": "AH03",
+      "question": "How does anyhow implement the Context trait for Result<T, E>?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH03-E1", "filePath": "src/context.rs", "symbol": "Context", "relevance": 3},
+        {"id": "AH03-E2", "filePath": "src/context.rs", "symbol": "context", "relevance": 2}
+      ]
+    },
+    {
+      "id": "AH04",
+      "question": "How does anyhow allow Option<T> to be converted into a Result with additional error context?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH04-E1", "filePath": "src/context.rs", "symbol": "Infallible", "relevance": 1},
+        {"id": "AH04-E2", "filePath": "src/context.rs", "symbol": "with_context", "relevance": 2}
+      ]
+    },
+    {
+      "id": "AH05",
+      "question": "Why is the context closure in with_context evaluated lazily?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH05-E1", "filePath": "src/context.rs", "symbol": "with_context", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH06",
+      "question": "How does Error::new construct an error from a standard library error, and what trait bounds does it require?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH06-E1", "filePath": "src/error.rs", "symbol": "new", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH07",
+      "question": "What is the difference between Error::new and Error::msg?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH07-E1", "filePath": "src/error.rs", "symbol": "new", "relevance": 3},
+        {"id": "AH07-E2", "filePath": "src/error.rs", "symbol": "msg", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH08",
+      "question": "How does Error::context attach additional context while preserving the underlying error?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH08-E1", "filePath": "src/error.rs", "symbol": "context", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH09",
+      "question": "How does Error::backtrace expose the captured backtrace, and under which feature is it available?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH09-E1", "filePath": "src/error.rs", "symbol": "backtrace", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH10",
+      "question": "How does Error::chain expose the underlying source error chain?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH10-E1", "filePath": "src/error.rs", "symbol": "chain", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH11",
+      "question": "How does Error::root_cause identify the lowest-level error in the error chain?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH11-E1", "filePath": "src/error.rs", "symbol": "root_cause", "relevance": 3},
+        {"id": "AH11-E2", "filePath": "src/error.rs", "symbol": "chain", "relevance": 2}
+      ]
+    },
+    {
+      "id": "AH12",
+      "question": "How does Error::is determine whether an error contains a particular concrete error type, including when context is attached?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH12-E1", "filePath": "src/error.rs", "symbol": "is", "relevance": 3},
+        {"id": "AH12-E2", "filePath": "src/error.rs", "symbol": "downcast_ref", "relevance": 2}
+      ]
+    },
+    {
+      "id": "AH13",
+      "question": "How does Error::downcast convert an anyhow error into its original concrete error type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH13-E1", "filePath": "src/error.rs", "symbol": "downcast", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH14",
+      "question": "How does Error::downcast_ref locate a concrete error inside the error representation?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH14-E1", "filePath": "src/error.rs", "symbol": "downcast_ref", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH15",
+      "question": "What is the difference between downcast_ref and downcast_mut?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH15-E1", "filePath": "src/error.rs", "symbol": "downcast_ref", "relevance": 2},
+        {"id": "AH15-E2", "filePath": "src/error.rs", "symbol": "downcast_mut", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH16",
+      "question": "How does into_boxed_dyn_error convert an anyhow error into a standard library error trait object?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH16-E1", "filePath": "src/error.rs", "symbol": "into_boxed_dyn_error", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH17",
+      "question": "How does anyhow's context implementation preserve the ability to downcast both the context type and the original error type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH17-E1", "filePath": "src/context.rs", "symbol": "ContextError", "relevance": 2},
+        {"id": "AH17-E2", "filePath": "src/error.rs", "symbol": "context_chain_downcast", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH18",
+      "question": "How does anyhow format errors differently with Display, alternate Display formatting, and Debug formatting?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "AH18-E1", "filePath": "src/lib.rs", "symbol": "Error", "relevance": 3}
+      ]
+    },
+    {
+      "id": "AH19",
+      "question": "Does anyhow automatically encrypt error messages before storing or displaying them?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "AH20",
+      "question": "Does anyhow provide a built-in distributed error synchronization mechanism across multiple machines?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

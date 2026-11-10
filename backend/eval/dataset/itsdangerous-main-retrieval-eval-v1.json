@@ -1,0 +1,184 @@
+{
+  "datasetId": "pallets-itsdangerous-main-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "pallets",
+    "name": "itsdangerous",
+    "url": "https://github.com/pallets/itsdangerous",
+    "branch": "main",
+    "commitSha": null,
+    "commitPolicy": "Resolve and record the exact main HEAD SHA represented by the indexed branch. Verify expected evidence against that snapshot before treating scores as a stable baseline. The main branch is mutable."
+  },
+  "questions": [
+    {
+      "id": "ITD01",
+      "question": "How does Signer.derive_key implement the different key derivation methods, and what happens for an unknown method?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD01-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "derive_key", "relevance": 3}
+      ]
+    },
+    {
+      "id": "ITD02",
+      "question": "Why does Signer reject certain separator characters, and which characters are not allowed?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD02-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "__init__", "relevance": 3},
+        {"id": "ITD02-E2", "filePath": "src/itsdangerous/encoding.py", "symbol": "_base64_alphabet", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD03",
+      "question": "How does Signer.sign construct the signed value?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD03-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "sign", "relevance": 3},
+        {"id": "ITD03-E2", "filePath": "src/itsdangerous/signer.py", "symbol": "get_signature", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD04",
+      "question": "How does Signer.verify_signature support secret-key rotation, and how is signature comparison performed?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD04-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "verify_signature", "relevance": 3},
+        {"id": "ITD04-E2", "filePath": "src/itsdangerous/signer.py", "symbol": "SigningAlgorithm", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD05",
+      "question": "How does Signer.unsign separate the original value from its signature, and when does it raise BadSignature?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD05-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "unsign", "relevance": 3}
+      ]
+    },
+    {
+      "id": "ITD06",
+      "question": "How does HMACAlgorithm generate a signature from the derived key and input value?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD06-E1", "filePath": "src/itsdangerous/signer.py", "symbol": "HMACAlgorithm", "relevance": 3},
+        {"id": "ITD06-E2", "filePath": "src/itsdangerous/signer.py", "symbol": "get_signature", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD07",
+      "question": "How does base64_decode restore padding before decoding, and how does it handle invalid encoded data?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD07-E1", "filePath": "src/itsdangerous/encoding.py", "symbol": "base64_decode", "relevance": 3}
+      ]
+    },
+    {
+      "id": "ITD08",
+      "question": "How does Serializer initialize its secret keys, salt, serializer, signer, and fallback signers?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD08-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "__init__", "relevance": 3},
+        {"id": "ITD08-E2", "filePath": "src/itsdangerous/serializer.py", "symbol": "Serializer", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD09",
+      "question": "How does Serializer.load_payload distinguish text serializers from binary serializers, and how does it handle deserialization errors?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD09-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "load_payload", "relevance": 3},
+        {"id": "ITD09-E2", "filePath": "src/itsdangerous/exc.py", "symbol": "BadPayload", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD10",
+      "question": "How does Serializer.dump_payload convert serialized data into bytes?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD10-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "dump_payload", "relevance": 3},
+        {"id": "ITD10-E2", "filePath": "src/itsdangerous/encoding.py", "symbol": "want_bytes", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD11",
+      "question": "In what order does Serializer.iter_unsigners yield the configured signer and fallback signers?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD11-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "iter_unsigners", "relevance": 3}
+      ]
+    },
+    {
+      "id": "ITD12",
+      "question": "How does Serializer.dumps serialize and sign an object, and when does it return text instead of bytes?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD12-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "dumps", "relevance": 3},
+        {"id": "ITD12-E2", "filePath": "src/itsdangerous/serializer.py", "symbol": "dump_payload", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD13",
+      "question": "How does Serializer.loads try multiple signers, and what happens when none can validate the signature?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD13-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "loads", "relevance": 3},
+        {"id": "ITD13-E2", "filePath": "src/itsdangerous/serializer.py", "symbol": "iter_unsigners", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD14",
+      "question": "What does Serializer.loads_unsafe return, and why does its documentation warn about using it?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD14-E1", "filePath": "src/itsdangerous/serializer.py", "symbol": "loads_unsafe", "relevance": 3},
+        {"id": "ITD14-E2", "filePath": "src/itsdangerous/serializer.py", "symbol": "_loads_unsafe_impl", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD15",
+      "question": "How does TimestampSigner.sign attach timestamp information to the value before generating its signature?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD15-E1", "filePath": "src/itsdangerous/timed.py", "symbol": "sign", "relevance": 3},
+        {"id": "ITD15-E2", "filePath": "src/itsdangerous/encoding.py", "symbol": "int_to_bytes", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD16",
+      "question": "How does TimestampSigner.unsign validate the timestamp against max_age and optionally return the signing time?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD16-E1", "filePath": "src/itsdangerous/timed.py", "symbol": "unsign", "relevance": 3},
+        {"id": "ITD16-E2", "filePath": "src/itsdangerous/exc.py", "symbol": "SignatureExpired", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD17",
+      "question": "How does TimedSerializer.loads handle max_age, return_timestamp, and expired signatures when trying signers?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD17-E1", "filePath": "src/itsdangerous/timed.py", "symbol": "loads", "relevance": 3},
+        {"id": "ITD17-E2", "filePath": "src/itsdangerous/timed.py", "symbol": "TimedSerializer", "relevance": 2}
+      ]
+    },
+    {
+      "id": "ITD18",
+      "question": "How does URLSafeSerializerMixin compress and base64-encode payloads, and how does it identify compressed payloads when loading?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "ITD18-E1", "filePath": "src/itsdangerous/url_safe.py", "symbol": "dump_payload", "relevance": 3},
+        {"id": "ITD18-E2", "filePath": "src/itsdangerous/url_safe.py", "symbol": "load_payload", "relevance": 3}
+      ]
+    },
+    {
+      "id": "ITD19",
+      "question": "Does itsdangerous encrypt serialized payloads by default so that their contents cannot be read by someone who obtains the signed value?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "ITD20",
+      "question": "Does itsdangerous provide a built-in distributed key registry that synchronizes signing keys across application instances?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}
