@@ -6,7 +6,7 @@ import {
   calculateQuestionMetrics,
   getOfficialMultiRepositoryMetrics,
 } from "./metrics.js";
-import { normalizeDataset } from "./datasets.js";
+import { isDatasetActive, normalizeDataset } from "./datasets.js";
 
 test("retrieval metrics avoid counting evidence matched by multiple chunks twice", () => {
   const metrics = calculateQuestionMetrics(
@@ -25,8 +25,7 @@ test("retrieval metrics avoid counting evidence matched by multiple chunks twice
   assert.equal(metrics.recall, 1);
   assert.equal(metrics.mrr, 0.5);
   assert.deepEqual(metrics.relevanceGrades, [0, 3, 0]);
-  const expectedNdcg =
-    (7 / Math.log2(3)) / (7 + 1 / Math.log2(3));
+  const expectedNdcg = 7 / Math.log2(3) / (7 + 1 / Math.log2(3));
   assert.ok(Math.abs(metrics.ndcg - expectedNdcg) < 1e-12);
 });
 
@@ -67,6 +66,28 @@ function datasetFixture(question: Record<string, unknown>) {
     questions: [question],
   };
 }
+
+test("datasets are active by default and honor a boolean isActive property", () => {
+  const dataset = datasetFixture({
+    id: "Q1",
+    question: "Question?",
+    answerable: true,
+    expectedEvidence: [{ id: "e1", filePath: "file.ts", relevance: 3 }],
+  });
+  assert.equal(isDatasetActive(dataset, "default.json"), true);
+  assert.equal(
+    isDatasetActive({ ...dataset, isActive: true }, "active.json"),
+    true,
+  );
+  assert.equal(
+    isDatasetActive({ ...dataset, isActive: false }, "inactive.json"),
+    false,
+  );
+  assert.throws(
+    () => isDatasetActive({ ...dataset, isActive: "false" }, "invalid.json"),
+    /Invalid isActive value in invalid\.json; expected a boolean/,
+  );
+});
 
 test("dataset normalization reads the canonical answerable and symbol fields", () => {
   const dataset = normalizeDataset(
@@ -209,9 +230,7 @@ test("multi-repository aggregation exposes partial diagnostics and excludes fail
     },
     {
       status: "failed",
-      questions: [
-        { answerable: true, metrics: questionMetrics(1, 1, 1) },
-      ],
+      questions: [{ answerable: true, metrics: questionMetrics(1, 1, 1) }],
     },
   ]);
   assert.equal(partial.status, "partial");

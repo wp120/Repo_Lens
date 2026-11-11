@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  handleIngestionJobFailure,
   processIngestionJob,
   type IngestionWorkerDependencies,
 } from "../jobs/ingestionWorker.js";
+import type { IngestionJob } from "../jobs/ingestionQueue.js";
 import type {
   CodeChunkStore,
   StorableCodeChunk,
 } from "../services/codeChunkStore.js";
+import { IngestionOwnershipLostError } from "../services/codeChunkStore.js";
 import { VoyageRateLimitTimeoutError } from "../services/voyageRateLimiter.js";
 
 interface FakeBranchIndex {
@@ -17,6 +20,7 @@ interface FakeBranchIndex {
   status: string;
   ingestionAttempt: number;
   lastError: string | null;
+  processingToken: string | null;
   repository: {
     owner: string;
     name: string;
@@ -38,9 +42,14 @@ class FakePrismaWorker {
       where: {
         id: string;
         ingestionAttempt?: number;
-        status?: { in: string[] };
+        status?: { in?: string[]; not?: string };
+        processingToken?: string;
       };
-      data: { status: string; lastError?: string | null };
+      data: {
+        status?: string;
+        lastError?: string | null;
+        processingToken?: string | null;
+      };
     }) => {
       if (!this.branch || this.branch.id !== args.where.id) {
         return { count: 0 };
@@ -57,12 +66,31 @@ class FakePrismaWorker {
       ) {
         return { count: 0 };
       }
+      if (
+        args.where.status?.not &&
+        args.where.status.not === this.branch.status
+      ) {
+        return { count: 0 };
+      }
+      if (
+        args.where.processingToken !== undefined &&
+        this.branch.processingToken !== args.where.processingToken
+      ) {
+        return { count: 0 };
+      }
 
-      this.branch.status = args.data.status;
+      if (args.data.status !== undefined) {
+        this.branch.status = args.data.status;
+      }
       if (args.data.lastError !== undefined) {
         this.branch.lastError = args.data.lastError;
       }
-      this.statusHistory.push(args.data.status);
+      if (args.data.processingToken !== undefined) {
+        this.branch.processingToken = args.data.processingToken;
+      }
+      if (args.data.status !== undefined) {
+        this.statusHistory.push(args.data.status);
+      }
       return { count: 1 };
     },
     update: async (args: {
@@ -86,14 +114,24 @@ class FakeChunkStore implements CodeChunkStore {
   savedChunks: StorableCodeChunk[] = [];
   deletedForBranch: string[] = [];
 
+  constructor(private readonly prisma: FakePrismaWorker) {}
+
   async saveChunks(
     branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
     chunks: StorableCodeChunk[],
   ): Promise<void> {
+    this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
     this.savedChunks = [...chunks];
   }
 
-  async deleteBranchChunks(branchIndexId: string): Promise<void> {
+  async deleteBranchChunks(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+  ): Promise<void> {
+    this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
     this.deletedForBranch.push(branchIndexId);
     this.savedChunks = [];
   }
@@ -102,6 +140,44 @@ class FakeChunkStore implements CodeChunkStore {
     return this.savedChunks.filter((c) => c.branchIndexId === branchIndexId)
       .length;
   }
+
+  private assertOwner(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+  ): void {
+    const branch = this.prisma.branch;
+    if (
+      !branch ||
+      branch.id !== branchIndexId ||
+      branch.ingestionAttempt !== ingestionAttempt ||
+      branch.processingToken !== processingToken
+    ) {
+      throw new IngestionOwnershipLostError();
+    }
+  }
+}
+
+const jobData: IngestionJob = {
+  branchIndexId: "branch-1",
+  repositoryId: "repo-1",
+  branchName: "main",
+  attempt: 1,
+};
+
+function createFailureJob(state: "failed" | "waiting") {
+  return {
+    data: jobData,
+    getState: async () => state,
+  };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }
 
 function createTestDependencies(options: {
@@ -157,9 +233,10 @@ test("processIngestionJob successfully processes queued branch to ready", async 
     status: "queued",
     ingestionAttempt: 1,
     lastError: null,
+    processingToken: null,
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
-  const chunkStore = new FakeChunkStore();
+  const chunkStore = new FakeChunkStore(prisma);
   const deps = createTestDependencies({ prisma, chunkStore });
   let embeddingTexts: string[] = [];
   deps.embedder = async (texts) => {
@@ -179,6 +256,7 @@ test("processIngestionJob successfully processes queued branch to ready", async 
 
   assert.equal(prisma.branch.status, "ready");
   assert.equal(prisma.branch.lastError, null);
+  assert.equal(prisma.branch.processingToken, null);
   assert.deepEqual(prisma.statusHistory, ["ingesting", "ready"]);
   assert.equal(chunkStore.savedChunks.length, 1);
   assert.equal(chunkStore.savedChunks[0].embedding.length, 1024);
@@ -203,9 +281,10 @@ test("processIngestionJob skips already-ready branch index idempotently", async 
     status: "ready", // Already ready!
     ingestionAttempt: 1,
     lastError: null,
+    processingToken: null,
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
-  const chunkStore = new FakeChunkStore();
+  const chunkStore = new FakeChunkStore(prisma);
   let embedderCalled = false;
   const deps = createTestDependencies({ prisma, chunkStore });
   deps.embedder = async () => {
@@ -229,6 +308,30 @@ test("processIngestionJob skips already-ready branch index idempotently", async 
   assert.equal(chunkStore.savedChunks.length, 0);
 });
 
+test("processIngestionJob resumes a redelivered job when status is already ingesting", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "ingesting",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: "00000000-0000-4000-8000-000000000001",
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+
+  await processIngestionJob(
+    jobData,
+    createTestDependencies({ prisma, chunkStore }),
+  );
+
+  assert.equal(prisma.branch.status, "ready");
+  assert.equal(prisma.branch.processingToken, null);
+  assert.equal(chunkStore.savedChunks.length, 1);
+});
+
 test("processIngestionJob skips superseded job attempt", async () => {
   const prisma = new FakePrismaWorker();
   prisma.branch = {
@@ -238,9 +341,10 @@ test("processIngestionJob skips superseded job attempt", async () => {
     status: "queued",
     ingestionAttempt: 2, // Current attempt is 2
     lastError: null,
+    processingToken: null,
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
-  const chunkStore = new FakeChunkStore();
+  const chunkStore = new FakeChunkStore(prisma);
   const deps = createTestDependencies({ prisma, chunkStore });
 
   // Attempt 1 arrives late:
@@ -259,7 +363,7 @@ test("processIngestionJob skips superseded job attempt", async () => {
   assert.equal(chunkStore.savedChunks.length, 0);
 });
 
-test("processIngestionJob cleans up chunks and marks failed on error", async () => {
+test("only the latest execution of an attempt can commit chunks", async () => {
   const prisma = new FakePrismaWorker();
   prisma.branch = {
     id: "branch-1",
@@ -268,9 +372,133 @@ test("processIngestionJob cleans up chunks and marks failed on error", async () 
     status: "queued",
     ingestionAttempt: 1,
     lastError: null,
+    processingToken: null,
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
-  const chunkStore = new FakeChunkStore();
+  const chunkStore = new FakeChunkStore(prisma);
+  const firstEmbedStarted = deferred();
+  const releaseFirstEmbed = deferred();
+  const firstDeps = createTestDependencies({
+    prisma,
+    chunkStore,
+    contentBySha: { "sha-file-1": "first execution" },
+  });
+  firstDeps.embedder = async (texts) => {
+    firstEmbedStarted.resolve();
+    await releaseFirstEmbed.promise;
+    return texts.map(() => Array(1024).fill(0.01));
+  };
+
+  const firstExecution = processIngestionJob(jobData, firstDeps);
+  await firstEmbedStarted.promise;
+
+  await processIngestionJob(
+    jobData,
+    createTestDependencies({
+      prisma,
+      chunkStore,
+      contentBySha: { "sha-file-1": "current execution" },
+    }),
+  );
+  releaseFirstEmbed.resolve();
+  await firstExecution;
+
+  assert.equal(prisma.branch.status, "ready");
+  assert.equal(chunkStore.savedChunks.length, 1);
+  assert.equal(chunkStore.savedChunks[0].content, "current execution");
+});
+
+test("outdated failure cleanup cannot delete chunks committed by the current execution", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const firstTreeStarted = deferred();
+  const releaseFirstTree = deferred();
+  const firstDeps = createTestDependencies({ prisma, chunkStore });
+  firstDeps.fetchTree = async () => {
+    firstTreeStarted.resolve();
+    await releaseFirstTree.promise;
+    throw new Error("outdated execution failed");
+  };
+
+  const firstExecution = processIngestionJob(jobData, firstDeps);
+  await firstTreeStarted.promise;
+  await processIngestionJob(
+    jobData,
+    createTestDependencies({ prisma, chunkStore }),
+  );
+  releaseFirstTree.resolve();
+  await firstExecution;
+
+  assert.equal(prisma.branch.status, "ready");
+  assert.equal(chunkStore.savedChunks.length, 1);
+  assert.deepEqual(chunkStore.deletedForBranch, []);
+});
+
+test("outdated execution cannot overwrite terminal failure from the current execution", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const firstEmbedStarted = deferred();
+  const releaseFirstEmbed = deferred();
+  const firstDeps = createTestDependencies({ prisma, chunkStore });
+  firstDeps.embedder = async (texts) => {
+    firstEmbedStarted.resolve();
+    await releaseFirstEmbed.promise;
+    return texts.map(() => Array(1024).fill(0.01));
+  };
+  const firstExecution = processIngestionJob(jobData, firstDeps);
+  await firstEmbedStarted.promise;
+
+  const currentDeps = createTestDependencies({ prisma, chunkStore });
+  currentDeps.fetchTree = async () => {
+    throw new Error("current execution failed");
+  };
+  await assert.rejects(processIngestionJob(jobData, currentDeps));
+  await handleIngestionJobFailure(
+    createFailureJob("failed"),
+    new Error("current execution failed"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+
+  releaseFirstEmbed.resolve();
+  await firstExecution;
+  assert.equal(prisma.branch.status, "failed");
+  assert.equal(prisma.branch.lastError, "current execution failed");
+  assert.equal(prisma.branch.processingToken, null);
+});
+
+test("processIngestionJob leaves terminal status handling to BullMQ after an error", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
   const deps = createTestDependencies({
     prisma,
     chunkStore,
@@ -290,14 +518,106 @@ test("processIngestionJob cleans up chunks and marks failed on error", async () 
     /Voyage API failure/,
   );
 
-  assert.equal(prisma.branch.status, "failed");
-  assert.ok(prisma.branch.lastError?.includes("Voyage API failure"));
-  assert.deepEqual(prisma.statusHistory, ["ingesting", "failed"]);
+  assert.equal(prisma.branch.status, "ingesting");
+  assert.equal(prisma.branch.processingToken !== null, true);
+  assert.deepEqual(prisma.statusHistory, ["ingesting"]);
   assert.ok(chunkStore.deletedForBranch.includes("branch-1"));
   assert.equal(chunkStore.savedChunks.length, 0);
+
+  await handleIngestionJobFailure(
+    {
+      data: {
+        branchIndexId: "branch-1",
+        repositoryId: "repo-1",
+        branchName: "main",
+        attempt: 1,
+      },
+      getState: async () => "failed",
+    },
+    new Error("Voyage API failure"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+  assert.equal(prisma.branch.status, "failed");
+  assert.ok(prisma.branch.lastError?.includes("Voyage API failure"));
+  assert.equal(prisma.branch.processingToken, null);
 });
 
-test("processIngestionJob marks the branch failed when embedding rate-limit wait times out", async () => {
+test("an intermediate BullMQ failure does not mark the branch failed", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "ingesting",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: "00000000-0000-4000-8000-000000000001",
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+
+  await handleIngestionJobFailure(
+    createFailureJob("waiting"),
+    new Error("temporary failure"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+
+  assert.equal(prisma.branch.status, "ingesting");
+  assert.ok(prisma.branch.processingToken);
+  assert.equal(prisma.branch.lastError, null);
+});
+
+test("terminal stalled-job failure marks only the current non-ready attempt failed", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "ingesting",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: "00000000-0000-4000-8000-000000000001",
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+
+  await handleIngestionJobFailure(
+    createFailureJob("failed"),
+    new Error("job stalled more than allowable limit"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+
+  assert.equal(prisma.branch.status, "failed");
+  assert.equal(
+    prisma.branch.lastError,
+    "job stalled more than allowable limit",
+  );
+  assert.equal(prisma.branch.processingToken, null);
+
+  prisma.branch.status = "ready";
+  prisma.branch.lastError = null;
+  await handleIngestionJobFailure(
+    createFailureJob("failed"),
+    new Error("late failure event"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+  assert.equal(prisma.branch.status, "ready");
+  assert.equal(prisma.branch.lastError, null);
+
+  prisma.branch.ingestionAttempt = 2;
+  prisma.branch.status = "queued";
+  prisma.branch.processingToken = "00000000-0000-4000-8000-000000000002";
+  await handleIngestionJobFailure(
+    createFailureJob("failed"),
+    new Error("superseded failure event"),
+    prisma as unknown as IngestionWorkerDependencies["prisma"],
+  );
+  assert.equal(prisma.branch.status, "queued");
+  assert.equal(
+    prisma.branch.processingToken,
+    "00000000-0000-4000-8000-000000000002",
+  );
+});
+
+test("processIngestionJob preserves retry state when embedding rate-limit wait times out", async () => {
   const prisma = new FakePrismaWorker();
   prisma.branch = {
     id: "branch-1",
@@ -306,9 +626,10 @@ test("processIngestionJob marks the branch failed when embedding rate-limit wait
     status: "queued",
     ingestionAttempt: 1,
     lastError: null,
+    processingToken: null,
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
-  const chunkStore = new FakeChunkStore();
+  const chunkStore = new FakeChunkStore(prisma);
   const deps = createTestDependencies({ prisma, chunkStore });
   deps.embedder = async () => {
     throw new VoyageRateLimitTimeoutError(
@@ -329,8 +650,8 @@ test("processIngestionJob marks the branch failed when embedding rate-limit wait
     (err: unknown) => err instanceof VoyageRateLimitTimeoutError,
   );
 
-  assert.equal(prisma.branch.status, "failed");
-  assert.ok(prisma.branch.lastError?.includes("timed out after 120000ms"));
-  assert.deepEqual(prisma.statusHistory, ["ingesting", "failed"]);
+  assert.equal(prisma.branch.status, "ingesting");
+  assert.ok(prisma.branch.processingToken);
+  assert.deepEqual(prisma.statusHistory, ["ingesting"]);
   assert.ok(chunkStore.deletedForBranch.includes("branch-1"));
 });

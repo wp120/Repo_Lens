@@ -1,0 +1,331 @@
+{
+  "datasetId": "jhalterman-typetools-master-retrieval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "jhalterman",
+    "name": "typetools",
+    "url": "https://github.com/jhalterman/typetools",
+    "branch": "master",
+    "commitSha": null,
+    "commitPolicy": "Resolve and record the exact master HEAD SHA represented by the indexed branch. Verify expected evidence against that snapshot before treating scores as a stable baseline. The master branch is mutable."
+  },
+  "questions": [
+    {
+      "id": "TT01",
+      "question": "What problem does TypeResolver solve, and which kinds of Java type declarations can it resolve according to the README?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT01-E1",
+          "filePath": "README.md",
+          "relevance": 3
+        },
+        {
+          "id": "TT01-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "TypeResolver",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT02",
+      "question": "What does resolveRawArgument return when a single generic type argument cannot be resolved?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT02-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArgument",
+          "relevance": 3
+        },
+        {
+          "id": "TT02-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "Unknown",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT03",
+      "question": "How does resolveRawArgument handle a generic type that resolves to zero or multiple arguments?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT03-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArgument",
+          "relevance": 3
+        },
+        {
+          "id": "TT03-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArguments",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT04",
+      "question": "What is the difference between resolveRawArgument and resolveRawArguments?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT04-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArgument",
+          "relevance": 3
+        },
+        {
+          "id": "TT04-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArguments",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT05",
+      "question": "How does resolveGenericType traverse a subtype's generic interfaces and superclass to find the requested type?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT05-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveGenericType",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT06",
+      "question": "What does resolveRawClass do when the supplied generic type is a ParameterizedType?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT06-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawClass",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT07",
+      "question": "How does resolveRawClass handle a GenericArrayType?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT07-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawClass",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT08",
+      "question": "How are unresolved TypeVariable instances converted into a raw class or Unknown.class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT08-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawClass",
+          "relevance": 3
+        },
+        {
+          "id": "TT08-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveBound",
+          "relevance": 2
+        },
+        {
+          "id": "TT08-E3",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "Unknown",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT09",
+      "question": "How does reify(Type, Class) replace type variables using the context class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT09-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "reify",
+          "relevance": 3
+        },
+        {
+          "id": "TT09-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "getTypeVariableMap",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT10",
+      "question": "How does reify recursively handle ParameterizedType arguments?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT10-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "reify",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT11",
+      "question": "How does reify handle a GenericArrayType whose component type cannot be converted to a Class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT11-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "reify",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT12",
+      "question": "Which wildcard type shapes can reify resolve, and which shapes cause UnsupportedOperationException?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT12-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "reify",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT13",
+      "question": "How does TypeResolver build and cache the mapping from TypeVariable objects to their resolved Types?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT13-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "getTypeVariableMap",
+          "relevance": 3
+        },
+        {
+          "id": "TT13-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "TYPE_VARIABLE_CACHE",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT14",
+      "question": "What is the effect of disableCache and enableCache on TypeResolver's internal type-variable cache?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT14-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "disableCache",
+          "relevance": 3
+        },
+        {
+          "id": "TT14-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "enableCache",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT15",
+      "question": "How does populateSuperTypeArgs recursively collect type arguments from parameterized interfaces?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT15-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "populateSuperTypeArgs",
+          "relevance": 3
+        },
+        {
+          "id": "TT15-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "populateTypeArgs",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT16",
+      "question": "How does TypeResolver attempt to resolve generic arguments for synthetic lambda classes?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT16-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "resolveRawArguments",
+          "relevance": 3
+        },
+        {
+          "id": "TT16-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "populateLambdaArgs",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT17",
+      "question": "How does TypeResolver initialize its lambda-resolution capability, and what happens if reflective access setup fails?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT17-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "RESOLVES_LAMBDAS",
+          "relevance": 3
+        },
+        {
+          "id": "TT17-E2",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "TypeResolver",
+          "relevance": 2
+        }
+      ]
+    },
+    {
+      "id": "TT18",
+      "question": "How does TypeResolver map primitive types to their wrapper classes?",
+      "answerable": true,
+      "expectedEvidence": [
+        {
+          "id": "TT18-E1",
+          "filePath": "src/main/java/net/jodah/typetools/TypeResolver.java",
+          "symbol": "PRIMITIVE_WRAPPERS",
+          "relevance": 3
+        }
+      ]
+    },
+    {
+      "id": "TT19",
+      "question": "Does TypeTools automatically modify Java source files to replace generic type declarations with concrete classes at compile time?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "TT20",
+      "question": "Does TypeTools provide a distributed registry that shares resolved generic type information between separate JVM processes?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

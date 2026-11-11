@@ -8,19 +8,51 @@ export interface StorableCodeChunk extends CodeChunk {
 }
 
 export interface CodeChunkStore {
-  saveChunks(branchIndexId: string, chunks: StorableCodeChunk[]): Promise<void>;
-  deleteBranchChunks(branchIndexId: string): Promise<void>;
+  saveChunks(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    chunks: StorableCodeChunk[],
+  ): Promise<void>;
+  deleteBranchChunks(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+  ): Promise<void>;
   countBranchChunks(branchIndexId: string): Promise<number>;
 }
 
 const BATCH_SIZE = 50;
 
+export class IngestionOwnershipLostError extends Error {
+  constructor() {
+    super("Ingestion execution no longer owns this branch.");
+    this.name = "IngestionOwnershipLostError";
+  }
+}
+
 export const prismaCodeChunkStore: CodeChunkStore = {
   async saveChunks(
     branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
     chunks: StorableCodeChunk[],
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
+      const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM branch_indexes
+         WHERE id = $1::uuid
+           AND ingestion_attempt = $2
+           AND processing_token = $3::uuid
+         FOR UPDATE`,
+        branchIndexId,
+        ingestionAttempt,
+        processingToken,
+      );
+      if (owner.length === 0) {
+        throw new IngestionOwnershipLostError();
+      }
+
       // Clean up any prior chunks for this branch index
       await tx.$executeRawUnsafe(
         "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
@@ -84,11 +116,31 @@ export const prismaCodeChunkStore: CodeChunkStore = {
     });
   },
 
-  async deleteBranchChunks(branchIndexId: string): Promise<void> {
-    await prisma.$executeRawUnsafe(
-      "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
-      branchIndexId,
-    );
+  async deleteBranchChunks(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM branch_indexes
+         WHERE id = $1::uuid
+           AND ingestion_attempt = $2
+           AND processing_token = $3::uuid
+         FOR UPDATE`,
+        branchIndexId,
+        ingestionAttempt,
+        processingToken,
+      );
+      if (owner.length === 0) {
+        throw new IngestionOwnershipLostError();
+      }
+
+      await tx.$executeRawUnsafe(
+        "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
+        branchIndexId,
+      );
+    });
   },
 
   async countBranchChunks(branchIndexId: string): Promise<number> {

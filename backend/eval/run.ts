@@ -20,6 +20,7 @@ import {
   type QuestionMetrics,
 } from "./metrics.js";
 import {
+  isDatasetActive,
   normalizeDataset,
   type Dataset,
   type DatasetEvidence,
@@ -121,8 +122,7 @@ async function loadActiveDatasets(): Promise<LoadedDataset[]> {
   const fileNames = entries
     .filter(
       (entry) =>
-        entry.isFile() &&
-        entry.name.endsWith("-retrieval-eval-v1.json"),
+        entry.isFile() && entry.name.endsWith("-retrieval-eval-v1.json"),
     )
     .map((entry) => entry.name)
     .sort();
@@ -132,9 +132,9 @@ async function loadActiveDatasets(): Promise<LoadedDataset[]> {
     );
   }
   console.log("Multi-repository retrieval evaluation");
-  console.log(`Discovered datasets (${fileNames.length}): ${fileNames.join(", ")}`);
 
-  const loaded: LoadedDataset[] = [];
+  const active: LoadedDataset[] = [];
+  const inactiveFileNames: string[] = [];
   for (const fileName of fileNames) {
     const path = resolve(datasetDirectory, fileName);
     try {
@@ -148,7 +148,11 @@ async function loadActiveDatasets(): Promise<LoadedDataset[]> {
           { cause: error },
         );
       }
-      loaded.push({
+      if (!isDatasetActive(parsed, fileName)) {
+        inactiveFileNames.push(fileName);
+        continue;
+      }
+      active.push({
         fileName,
         dataset: normalizeDataset(parsed, fileName),
       });
@@ -159,10 +163,20 @@ async function loadActiveDatasets(): Promise<LoadedDataset[]> {
           : error instanceof Error
             ? error.message
             : String(error);
-      loaded.push({ fileName, failureReason: message });
+      active.push({ fileName, failureReason: message });
     }
   }
-  return loaded;
+  console.log(
+    `Active datasets (${active.length}): ${formatFileNames(active.map(({ fileName }) => fileName))}`,
+  );
+  console.log(
+    `Inactive datasets (${inactiveFileNames.length}): ${formatFileNames(inactiveFileNames)}`,
+  );
+  return active;
+}
+
+function formatFileNames(fileNames: string[]): string {
+  return fileNames.length > 0 ? fileNames.join(", ") : "(none)";
 }
 
 async function resolveBranchIndex(dataset: Dataset) {
@@ -385,8 +399,7 @@ function emptyRepositoryResult(loaded: LoadedDataset): RepositoryResult {
     answerableQuestionCount:
       dataset?.questions.filter((question) => question.answerable).length ?? 0,
     unanswerableQuestionCount:
-      dataset?.questions.filter((question) => !question.answerable).length ??
-      0,
+      dataset?.questions.filter((question) => !question.answerable).length ?? 0,
     aggregateMetrics: null,
     preflightWarnings: [],
   };
@@ -405,6 +418,7 @@ async function evaluateDataset(
   const result = emptyRepositoryResult(loaded);
   if (!loaded.dataset) return result;
   const dataset = loaded.dataset;
+  console.log("Evaluating for another Dataset");
   try {
     const { branch } = await resolveBranchIndex(dataset);
     result.branchIndexId = branch.id;
@@ -414,7 +428,8 @@ async function evaluateDataset(
       dataset.repository.commitSha,
     );
     result.preflightWarnings = warnings;
-    if (result.repository) result.repository.indexedCommitSha = indexedCommitSha;
+    if (result.repository)
+      result.repository.indexedCommitSha = indexedCommitSha;
 
     for (const question of dataset.questions) {
       try {
@@ -423,6 +438,7 @@ async function evaluateDataset(
           question.question,
           topK,
         );
+        console.log("Retrieved for that dataset");
         const retrievedResults = retrieved.map((chunk) =>
           toReportResult(chunk, question.expectedEvidence),
         );
@@ -516,7 +532,10 @@ function metricReport(
     : null;
 }
 
-function countQuestions(datasets: LoadedDataset[], answerable: boolean): number {
+function countQuestions(
+  datasets: LoadedDataset[],
+  answerable: boolean,
+): number {
   return datasets.reduce(
     (total, loaded) =>
       total +
@@ -530,6 +549,9 @@ function countQuestions(datasets: LoadedDataset[], answerable: boolean): number 
 async function main(): Promise<void> {
   const topK = parseTopK(process.argv.slice(2));
   const loadedDatasets = await loadActiveDatasets();
+  if (loadedDatasets.length === 0) {
+    throw new Error("No active retrieval datasets were found.");
+  }
   const repositoryResults: RepositoryResult[] = [];
 
   for (const loaded of loadedDatasets) {
@@ -563,7 +585,10 @@ async function main(): Promise<void> {
       ? {
           completedRepositoryCount: multiMetrics.completedRepositoryCount,
           questionWeighted: metricReport(multiMetrics.questionWeighted, topK),
-          repositoryWeighted: metricReport(multiMetrics.repositoryWeighted, topK),
+          repositoryWeighted: metricReport(
+            multiMetrics.repositoryWeighted,
+            topK,
+          ),
         }
       : undefined;
 

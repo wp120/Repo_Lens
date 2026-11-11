@@ -1,4 +1,5 @@
 import { Worker, type Job } from "bullmq";
+import { randomUUID } from "node:crypto";
 import { createRedisConnection } from "../config/redis.js";
 import { ingestionLimits } from "../config/ingestionLimits.js";
 import { prisma as defaultPrisma } from "../database/prisma.js";
@@ -21,6 +22,7 @@ import { generateVoyageEmbeddings } from "../services/voyageEmbedding.js";
 import { buildChunkEmbeddingText } from "../services/embeddingContext.js";
 import {
   prismaCodeChunkStore,
+  IngestionOwnershipLostError,
   type CodeChunkStore,
   type StorableCodeChunk,
 } from "../services/codeChunkStore.js";
@@ -94,6 +96,7 @@ export async function processIngestionJob(
   jobData: IngestionJob,
   deps: IngestionWorkerDependencies = defaultWorkerDependencies,
 ): Promise<void> {
+  const processingToken = randomUUID();
   const branchIndex = await deps.prisma.branchIndex.findUnique({
     where: { id: jobData.branchIndexId },
     include: { repository: true },
@@ -106,37 +109,31 @@ export async function processIngestionJob(
     return;
   }
 
-  // Idempotency: Do not silently reprocess an already-ready or already-ingesting branch
-  // below checks are not needed because we update for branches with status queued or failed only.
   if (branchIndex.status === "ready") {
     console.info(
       `BranchIndex ${jobData.branchIndexId} is already ready, skipping.`,
     );
     return;
   }
-  if (branchIndex.status === "ingesting") {
-    console.info(`BranchIndex ${branchIndex.id} is already ingesting, skipping.`);
-    return;
-  }
-
   // Skip superseded attempts
-  if (branchIndex.ingestionAttempt > jobData.attempt) {
+  if (branchIndex.ingestionAttempt !== jobData.attempt) {
     console.info(
       `BranchIndex ${jobData.branchIndexId} attempt ${jobData.attempt} is superseded by attempt ${branchIndex.ingestionAttempt}, skipping.`,
     );
     return;
   }
 
-  // Atomically update status to "ingesting"
+  // Claiming an already-ingesting branch is how stalled BullMQ deliveries resume.
   const transition = await deps.prisma.branchIndex.updateMany({
     where: {
       id: jobData.branchIndexId,
       ingestionAttempt: jobData.attempt,
-      status: { in: ["queued", "failed"] },
+      status: { in: ["queued", "failed", "ingesting"] },
     },
     data: {
       status: "ingesting",
       lastError: null,
+      processingToken,
     },
   });
 
@@ -219,42 +216,79 @@ export async function processIngestionJob(
     }
 
     // Store chunks and embeddings atomically
-    await deps.chunkStore.saveChunks(branchIndex.id, allChunks);
+    await deps.chunkStore.saveChunks(
+      branchIndex.id,
+      jobData.attempt,
+      processingToken,
+      allChunks,
+    );
 
-    // Update status to "ready"
-    await deps.prisma.branchIndex.update({
-      where: { id: branchIndex.id },
+    const readyTransition = await deps.prisma.branchIndex.updateMany({
+      where: {
+        id: branchIndex.id,
+        ingestionAttempt: jobData.attempt,
+        status: "ingesting",
+        processingToken,
+      },
       data: {
         status: "ready",
         lastError: null,
+        processingToken: null,
       },
     });
+    if (readyTransition.count === 0) {
+      return;
+    }
   } catch (error) {
+    if (error instanceof IngestionOwnershipLostError) {
+      return;
+    }
+
     const errorMsg =
       error instanceof Error ? error.message : "Unknown ingestion failure";
 
     try {
-      await deps.chunkStore.deleteBranchChunks(branchIndex.id);
+      await deps.chunkStore.deleteBranchChunks(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+      );
     } catch (cleanupError) {
+      if (cleanupError instanceof IngestionOwnershipLostError) {
+        return;
+      }
       console.error(
         `Failed to clean up chunks for branch ${branchIndex.id}:`,
         cleanupError,
       );
     }
 
-    await deps.prisma.branchIndex.updateMany({
-      where: {
-        id: branchIndex.id,
-        ingestionAttempt: jobData.attempt,
-      },
-      data: {
-        status: "failed",
-        lastError: errorMsg.slice(0, 4000),
-      },
-    });
-
+    console.error(`Ingestion failed for branch ${branchIndex.id}:`, errorMsg);
     throw error;
   }
+}
+
+export async function handleIngestionJobFailure(
+  job: Pick<Job<IngestionJob>, "data" | "getState">,
+  error: Error,
+  db: IngestionWorkerDependencies["prisma"] = defaultPrisma,
+): Promise<void> {
+  if ((await job.getState()) !== "failed") {
+    return;
+  }
+
+  await db.branchIndex.updateMany({
+    where: {
+      id: job.data.branchIndexId,
+      ingestionAttempt: job.data.attempt,
+      status: { not: "ready" },
+    },
+    data: {
+      status: "failed",
+      lastError: error.message.slice(0, 4000),
+      processingToken: null,
+    },
+  });
 }
 
 let ingestionWorker: Worker<IngestionJob> | undefined;
@@ -267,6 +301,9 @@ export function startIngestionWorker(
   ingestionWorker = new Worker<IngestionJob>(
     "repository-ingestion",
     async (job: Job<IngestionJob>) => {
+      console.log(
+        `Worker starting job for repoId: ${job.data.repositoryId}, branchId: ${job.data.branchIndexId}`,
+      );
       await processIngestionJob(job.data, deps);
     },
     {
@@ -285,6 +322,20 @@ export function startIngestionWorker(
       `Job ${job?.id} failed for branchIndex ${job?.data?.branchIndexId}:`,
       err.message,
     );
+    if (job) {
+      void handleIngestionJobFailure(job, err, deps.prisma).catch(
+        (failureError: unknown) => {
+          console.error("Could not record terminal ingestion failure", {
+            branchIndexId: job.data.branchIndexId,
+            attempt: job.data.attempt,
+            error:
+              failureError instanceof Error
+                ? failureError.message
+                : "Unknown database error",
+          });
+        },
+      );
+    }
   });
 
   return ingestionWorker;

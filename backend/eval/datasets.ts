@@ -25,10 +25,19 @@ export interface Dataset {
   questions: DatasetQuestion[];
 }
 
-export function normalizeDataset(
-  value: unknown,
-  sourceName: string,
-): Dataset {
+export function isDatasetActive(value: unknown, sourceName: string): boolean {
+  if (!isRecord(value) || !Object.hasOwn(value, "isActive")) {
+    return true;
+  }
+  if (typeof value.isActive !== "boolean") {
+    throw new Error(
+      `Invalid isActive value in ${sourceName}; expected a boolean.`,
+    );
+  }
+  return value.isActive;
+}
+
+export function normalizeDataset(value: unknown, sourceName: string): Dataset {
   if (!isRecord(value) || !isRecord(value.repository)) {
     throw new Error(`Invalid dataset structure in ${sourceName}.`);
   }
@@ -102,7 +111,10 @@ export function normalizeDataset(
           );
         }
 
-        if (rawEvidence.symbol !== undefined && !nonEmptyString(rawEvidence.symbol)) {
+        if (
+          rawEvidence.symbol !== undefined &&
+          !nonEmptyString(rawEvidence.symbol)
+        ) {
           throw new Error(
             `Invalid symbol in ${sourceName} question ${rawQuestion.id} evidence ${evidenceIndex + 1}.`,
           );

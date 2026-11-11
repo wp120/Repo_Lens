@@ -1,0 +1,186 @@
+{
+  "datasetId": "junit4-main-retrieval-eval-v1",
+  "version": "1.0.0",
+  "repository": {
+    "owner": "junit-team",
+    "name": "junit4",
+    "url": "https://github.com/junit-team/junit4",
+    "branch": "main",
+    "commitSha": null
+  },
+  "questions": [
+    {
+      "id": "JU01",
+      "question": "How does BlockJUnit4ClassRunner discover the test methods in a test class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU01-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "computeTestMethods", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JU02",
+      "question": "What constructor validation does BlockJUnit4ClassRunner perform on a test class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU02-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "validateConstructor", "relevance": 3},
+        {"id": "JU02-E2", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "validateZeroArgConstructor", "relevance": 2},
+        {"id": "JU02-E3", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "validateOnlyOneConstructor", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU03",
+      "question": "How does BlockJUnit4ClassRunner.methodBlock assemble the statements that execute an individual test method?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU03-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "methodBlock", "relevance": 3},
+        {"id": "JU03-E2", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "methodInvoker", "relevance": 2},
+        {"id": "JU03-E3", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "withRules", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU04",
+      "question": "How does BlockJUnit4ClassRunner handle the expected exception configured in the @Test annotation?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU04-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "possiblyExpectingExceptions", "relevance": 3},
+        {"id": "JU04-E2", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "getExpectedException", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU05",
+      "question": "How does BlockJUnit4ClassRunner enforce the timeout configured on a test method?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU05-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "withPotentialTimeout", "relevance": 3},
+        {"id": "JU05-E2", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "getTimeout", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU06",
+      "question": "How are methods annotated with @Before incorporated into the execution of a test?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU06-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "withBefores", "relevance": 3},
+        {"id": "JU06-E2", "filePath": "src/main/java/org/junit/internal/runners/statements/RunBefores.java", "symbol": "evaluate", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU07",
+      "question": "How are methods annotated with @After executed, particularly when the test itself throws an exception?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU07-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "withAfters", "relevance": 3},
+        {"id": "JU07-E2", "filePath": "src/main/java/org/junit/internal/runners/statements/RunAfters.java", "symbol": "evaluate", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU08",
+      "question": "How does BlockJUnit4ClassRunner apply method-level rules and test rules to a test statement?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU08-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "withRules", "relevance": 3},
+        {"id": "JU08-E2", "filePath": "src/main/java/org/junit/runners/RuleContainer.java", "symbol": "apply", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU09",
+      "question": "How does BlockJUnit4ClassRunner decide whether a test method should be ignored?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU09-E1", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "isIgnored", "relevance": 3},
+        {"id": "JU09-E2", "filePath": "src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java", "symbol": "runChild", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU10",
+      "question": "How does ParentRunner.classBlock construct the execution sequence for an entire test class?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU10-E1", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "classBlock", "relevance": 3},
+        {"id": "JU10-E2", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "withBeforeClasses", "relevance": 2},
+        {"id": "JU10-E3", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "withAfterClasses", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU11",
+      "question": "How does ParentRunner.runLeaf report test start, success, failure, and completion events?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU11-E1", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "runLeaf", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JU12",
+      "question": "How does ParentRunner handle filtering test children, and how does it handle a result with no remaining tests?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU12-E1", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "filter", "relevance": 3},
+        {"id": "JU12-E2", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "getFilteredChildren", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU13",
+      "question": "How does ParentRunner sort its test children, and under what condition does it avoid reordering them?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU13-E1", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "sort", "relevance": 3},
+        {"id": "JU13-E2", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "shouldNotReorder", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU14",
+      "question": "How does ParentRunner support customizing the scheduling of child tests?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU14-E1", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "setScheduler", "relevance": 3},
+        {"id": "JU14-E2", "filePath": "src/main/java/org/junit/runners/ParentRunner.java", "symbol": "runChildren", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU15",
+      "question": "How does TemporaryFolder.Builder support configuring the parent directory and assured deletion?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU15-E1", "filePath": "src/main/java/org/junit/rules/TemporaryFolder.java", "symbol": "Builder", "relevance": 3},
+        {"id": "JU15-E2", "filePath": "src/main/java/org/junit/rules/TemporaryFolder.java", "symbol": "assureDeletion", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU16",
+      "question": "How does TemporaryFolder.newFolder handle nested paths and reject absolute paths?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU16-E1", "filePath": "src/main/java/org/junit/rules/TemporaryFolder.java", "symbol": "newFolder", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JU17",
+      "question": "How does TemporaryFolder.delete handle cleanup failures when assured deletion is enabled?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU17-E1", "filePath": "src/main/java/org/junit/rules/TemporaryFolder.java", "symbol": "delete", "relevance": 3},
+        {"id": "JU17-E2", "filePath": "src/main/java/org/junit/rules/TemporaryFolder.java", "symbol": "tryDelete", "relevance": 2}
+      ]
+    },
+    {
+      "id": "JU18",
+      "question": "How does Assert.assertThrows verify the expected exception type and return the thrown exception?",
+      "answerable": true,
+      "expectedEvidence": [
+        {"id": "JU18-E1", "filePath": "src/main/java/org/junit/Assert.java", "symbol": "assertThrows", "relevance": 3}
+      ]
+    },
+    {
+      "id": "JU19",
+      "question": "Does JUnit 4 include a built-in SQL database migration engine for managing application schemas?",
+      "answerable": false,
+      "expectedEvidence": []
+    },
+    {
+      "id": "JU20",
+      "question": "Does JUnit 4 provide a built-in distributed test coordinator that synchronizes test execution across remote machines?",
+      "answerable": false,
+      "expectedEvidence": []
+    }
+  ]
+}

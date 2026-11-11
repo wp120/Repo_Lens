@@ -290,6 +290,7 @@ const prismaIngestionStore: IngestionStore = {
             status: "queued",
             ingestionAttempt: { increment: 1 },
             lastError: null,
+            processingToken: null,
           },
           select: {
             id: true,
@@ -326,7 +327,11 @@ const prismaIngestionStore: IngestionStore = {
         ingestionAttempt: attempt,
         status: "queued",
       },
-      data: { status: "failed", lastError: error.slice(0, 4000) },
+      data: {
+        status: "failed",
+        lastError: error.slice(0, 4000),
+        processingToken: null,
+      },
     });
   },
 };

@@ -43,6 +43,7 @@ model BranchIndex {
   updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
   ingestionAttempt Int                   @default(0) @map("ingestion_attempt")
   lastError        String?               @map("last_error") @db.Text
+  processingToken  String?               @map("processing_token") @db.Uuid
   repository       Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   userAccess       UserBranchAccess[]
   ingestions       UserBranchIngestion[]
