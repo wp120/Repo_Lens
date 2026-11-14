@@ -105,6 +105,24 @@ test("lists user access grouped by repository with index statuses", async () => 
   assert.equal(repositories[0].branches[0].status, "ready");
 });
 
+test("lists a terminally failed branch with its database failure status", async () => {
+  const store = fakeStore(null, [
+    {
+      id: "branch-id",
+      name: "main",
+      status: "failed",
+      repository: {
+        id: "repo-id",
+        owner: "owner",
+        name: "repo",
+        htmlUrl: "https://github.com/owner/repo",
+      },
+    },
+  ]);
+  const repositories = await getUserRepositories("authenticated-user", store);
+  assert.equal(repositories[0].branches[0].status, "failed");
+});
+
 function fakeStore(
   branch: (ExistingBranchIndex & { repositoryId: string }) | null,
   records: UserBranchRecord[] = [],

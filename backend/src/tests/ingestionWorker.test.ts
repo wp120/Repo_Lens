@@ -113,6 +113,7 @@ class FakePrismaWorker {
 class FakeChunkStore implements CodeChunkStore {
   savedChunks: StorableCodeChunk[] = [];
   deletedForBranch: string[] = [];
+  finalizedCommits: string[] = [];
 
   constructor(private readonly prisma: FakePrismaWorker) {}
 
@@ -139,6 +140,44 @@ class FakeChunkStore implements CodeChunkStore {
   async countBranchChunks(branchIndexId: string): Promise<number> {
     return this.savedChunks.filter((c) => c.branchIndexId === branchIndexId)
       .length;
+  }
+
+  async stageChunks(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    chunks: StorableCodeChunk[],
+  ): Promise<void> {
+    this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
+    const stagedById = new Map(
+      this.savedChunks
+        .filter((chunk) => chunk.id)
+        .map((chunk) => [chunk.id!, chunk]),
+    );
+    this.savedChunks = chunks.map((chunk) => {
+      const previous = chunk.id ? stagedById.get(chunk.id) : undefined;
+      return previous?.embeddingStatus === "completed"
+        ? previous
+        : chunk;
+    });
+  }
+
+  async finalizeIngestion(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    commitSha: string,
+  ): Promise<boolean> {
+    this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
+    if (!this.prisma.branch) {
+      throw new Error("Branch is not configured.");
+    }
+    this.finalizedCommits.push(commitSha);
+    this.prisma.branch.status = "ready";
+    this.prisma.branch.lastError = null;
+    this.prisma.branch.processingToken = null;
+    this.prisma.statusHistory.push("ready");
+    return true;
   }
 
   private assertOwner(
@@ -270,6 +309,127 @@ test("processIngestionJob successfully processes queued branch to ready", async 
     chunkStore.savedChunks[0].content,
     "export function hello() { return 'world'; }",
   );
+});
+
+test("batch ingestion splits work into batches and keeps the branch ingesting", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const deps = createTestDependencies({ prisma, chunkStore });
+  deps.chunker = async (filePath, _content, commitSha) =>
+    Array.from({ length: 101 }, (_, index) => ({
+      filePath,
+      content: `chunk-${index}`,
+      startLine: index + 1,
+      endLine: index + 1,
+      language: "typescript",
+      symbolName: `symbol-${index}`,
+      commitSha,
+    }));
+  const batches: Array<{
+    branchIndexId: string;
+    ingestionAttempt: number;
+    processingToken: string;
+    commitSha: string;
+    chunkIds: string[];
+  }> = [];
+  deps.enqueueBatchEmbeddings = async (batch) => {
+    batches.push(batch);
+  };
+
+  await processIngestionJob(jobData, deps);
+
+  assert.equal(prisma.branch.status, "ingesting");
+  assert.ok(prisma.branch.processingToken);
+  assert.equal(prisma.statusHistory.includes("ready"), false);
+  assert.equal(chunkStore.savedChunks.length, 101);
+  assert.deepEqual(batches.map((batch) => batch.chunkIds.length), [50, 50, 1]);
+  assert.ok(
+    batches.every(
+      (batch) =>
+        batch.processingToken === prisma.branch?.processingToken &&
+        batch.ingestionAttempt === jobData.attempt &&
+        batch.commitSha === "a".repeat(40),
+    ),
+  );
+});
+
+test("batch ingestion finalizes immediately when there are no chunks", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const deps = createTestDependencies({ prisma, chunkStore, files: [] });
+  const batches: unknown[] = [];
+  deps.enqueueBatchEmbeddings = async (batch) => {
+    batches.push(batch);
+  };
+
+  await processIngestionJob(jobData, deps);
+
+  assert.deepEqual(batches, []);
+  assert.deepEqual(chunkStore.finalizedCommits, ["a".repeat(40)]);
+  assert.equal(prisma.branch.status, "ready");
+  assert.equal(prisma.branch.processingToken, null);
+});
+
+test("repository redelivery reuses staged chunk IDs and completed embeddings", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const firstBatches: string[][] = [];
+  const firstDeps = createTestDependencies({ prisma, chunkStore });
+  firstDeps.enqueueBatchEmbeddings = async (batch) => {
+    firstBatches.push(batch.chunkIds);
+  };
+  await processIngestionJob(jobData, firstDeps);
+
+  const stagedId = chunkStore.savedChunks[0].id;
+  assert.ok(stagedId);
+  chunkStore.savedChunks[0].embeddingStatus = "completed";
+  chunkStore.savedChunks[0].embedding = Array(1024).fill(0.25);
+  const previousToken = prisma.branch.processingToken;
+
+  const recoveredBatches: string[][] = [];
+  const retryDeps = createTestDependencies({ prisma, chunkStore });
+  retryDeps.enqueueBatchEmbeddings = async (batch) => {
+    recoveredBatches.push(batch.chunkIds);
+  };
+  await processIngestionJob(jobData, retryDeps);
+
+  assert.equal(chunkStore.savedChunks.length, 1);
+  assert.equal(chunkStore.savedChunks[0].id, stagedId);
+  assert.equal(chunkStore.savedChunks[0].embeddingStatus, "completed");
+  assert.deepEqual(chunkStore.savedChunks[0].embedding, Array(1024).fill(0.25));
+  assert.deepEqual(firstBatches, [[stagedId]]);
+  assert.deepEqual(recoveredBatches, [[stagedId]]);
+  assert.notEqual(prisma.branch.processingToken, previousToken);
 });
 
 test("processIngestionJob skips already-ready branch index idempotently", async () => {

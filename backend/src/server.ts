@@ -7,12 +7,18 @@ import {
   startIngestionWorker,
   closeIngestionWorker,
 } from "./jobs/ingestionWorker.js";
+import {
+  startChunkEmbeddingWorker,
+  closeChunkEmbeddingWorker,
+} from "./jobs/chunkEmbeddingWorker.js";
+import { closeChunkEmbeddingQueue } from "./jobs/chunkEmbeddingQueue.js";
 import { closeVoyageRateLimiter } from "./services/voyageRateLimiter.js";
 
 const port = Number(process.env.PORT ?? 3001);
 
 await sessionRedis.connect();
 startIngestionWorker();
+startChunkEmbeddingWorker();
 const server = app.listen(port, () => {
   console.log(`RepoLens API listening on http://localhost:${port}`);
 });
@@ -24,7 +30,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         sessionRedis.quit(),
         prisma.$disconnect(),
         closeIngestionQueue(),
+        closeChunkEmbeddingQueue(),
         closeIngestionWorker(),
+        closeChunkEmbeddingWorker(),
         closeVoyageRateLimiter(),
       ]).finally(() => process.exit(0));
     });

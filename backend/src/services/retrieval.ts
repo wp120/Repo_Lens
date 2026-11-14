@@ -69,6 +69,9 @@ export async function retrieveRelevantChunks(
       (embedding <=> ${vector}::vector) AS "distance"
     FROM code_chunks
     WHERE branch_index_id = ${branchIndexId}::uuid
+      AND is_active = true
+      AND embedding_status = 'completed'
+      AND embedding IS NOT NULL
     ORDER BY embedding <=> ${vector}::vector ASC
     LIMIT ${limit}
   `;

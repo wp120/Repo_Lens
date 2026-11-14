@@ -1,5 +1,5 @@
 import { Worker, type Job } from "bullmq";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createRedisConnection } from "../config/redis.js";
 import { ingestionLimits } from "../config/ingestionLimits.js";
 import { prisma as defaultPrisma } from "../database/prisma.js";
@@ -27,10 +27,15 @@ import {
   type StorableCodeChunk,
 } from "../services/codeChunkStore.js";
 import type { IngestionJob } from "./ingestionQueue.js";
+import {
+  enqueueChunkEmbeddings,
+  type ChunkEmbeddingJob,
+} from "./chunkEmbeddingQueue.js";
 
 export interface IngestionWorkerDependencies {
   prisma: typeof defaultPrisma;
   chunkStore: CodeChunkStore;
+  enqueueBatchEmbeddings?: (job: ChunkEmbeddingJob) => Promise<void>;
   resolveCommit: (
     owner: string,
     repo: string,
@@ -78,9 +83,34 @@ export async function resolveBranchCommit(
   return sha;
 }
 
+function stagedChunkId(
+  branchIndexId: string,
+  ingestionAttempt: number,
+  chunk: CodeChunk,
+): string {
+  const hash = createHash("sha256")
+    .update(
+      JSON.stringify([
+        branchIndexId,
+        ingestionAttempt,
+        chunk.commitSha,
+        chunk.filePath,
+        chunk.startLine,
+        chunk.endLine,
+        chunk.content,
+      ]),
+    )
+    .digest();
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  const hex = hash.subarray(0, 16).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export const defaultWorkerDependencies: IngestionWorkerDependencies = {
   prisma: defaultPrisma,
   chunkStore: prismaCodeChunkStore,
+  enqueueBatchEmbeddings: (job) => enqueueChunkEmbeddings(job),
   resolveCommit: (owner, repo, branch) =>
     resolveBranchCommit(owner, repo, branch),
   fetchTree: (owner, repo, commitSha, limits) =>
@@ -195,8 +225,74 @@ export async function processIngestionJob(
           ...chunk,
           embedding: [],
           branchIndexId: branchIndex.id,
+          sourceBlobSha: file.sha,
         });
       }
+    }
+
+    if (deps.enqueueBatchEmbeddings) {
+      for (const chunk of allChunks) {
+        chunk.id ??= stagedChunkId(branchIndex.id, jobData.attempt, chunk);
+      }
+      if (!deps.chunkStore.stageChunks) {
+        throw new Error("Chunk staging is not configured for batch ingestion.");
+      }
+
+      await deps.chunkStore.stageChunks(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+        allChunks,
+      );
+      console.info("Staged chunks for embedding", {
+        branchIndexId: branchIndex.id,
+        ingestionAttempt: jobData.attempt,
+        commitSha,
+        chunkCount: allChunks.length,
+      });
+
+      if (allChunks.length === 0) {
+        if (!deps.chunkStore.finalizeIngestion) {
+          throw new Error("Ingestion finalization is not configured.");
+        }
+        await deps.chunkStore.finalizeIngestion(
+          branchIndex.id,
+          jobData.attempt,
+          processingToken,
+          commitSha,
+        );
+      } else {
+        for (
+          let start = 0;
+          start < allChunks.length;
+          start += ingestionLimits.embeddingBatchSize
+        ) {
+          const batch = allChunks.slice(
+            start,
+            start + ingestionLimits.embeddingBatchSize,
+          );
+          const chunkIds = batch.map((chunk) => {
+            if (!chunk.id) {
+              throw new Error("Staged chunk is missing its database ID.");
+            }
+            return chunk.id;
+          });
+
+          await deps.enqueueBatchEmbeddings({
+            branchIndexId: branchIndex.id,
+            ingestionAttempt: jobData.attempt,
+            processingToken,
+            commitSha,
+            chunkIds,
+          });
+          console.info("Enqueued chunk embedding batch", {
+            branchIndexId: branchIndex.id,
+            ingestionAttempt: jobData.attempt,
+            chunkCount: chunkIds.length,
+          });
+        }
+      }
+      return;
     }
 
     // Generate embeddings in batches via Voyage AI
@@ -216,12 +312,14 @@ export async function processIngestionJob(
     }
 
     // Store chunks and embeddings atomically
-    await deps.chunkStore.saveChunks(
-      branchIndex.id,
-      jobData.attempt,
-      processingToken,
-      allChunks,
-    );
+    if (deps.chunkStore.saveChunks) {
+      await deps.chunkStore.saveChunks(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+        allChunks,
+      );
+    }
 
     const readyTransition = await deps.prisma.branchIndex.updateMany({
       where: {
@@ -248,11 +346,13 @@ export async function processIngestionJob(
       error instanceof Error ? error.message : "Unknown ingestion failure";
 
     try {
-      await deps.chunkStore.deleteBranchChunks(
-        branchIndex.id,
-        jobData.attempt,
-        processingToken,
-      );
+      if (!deps.enqueueBatchEmbeddings && deps.chunkStore.deleteBranchChunks) {
+        await deps.chunkStore.deleteBranchChunks(
+          branchIndex.id,
+          jobData.attempt,
+          processingToken,
+        );
+      }
     } catch (cleanupError) {
       if (cleanupError instanceof IngestionOwnershipLostError) {
         return;
