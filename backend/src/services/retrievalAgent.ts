@@ -10,9 +10,9 @@ export interface RetrievalBudget {
   maxAgentTurns: number;
 }
 
-export interface RetrievalOutcome {
+export interface RetrievalOutcome<TChunk extends RetrievedChunk = RetrievedChunk> {
   status: "sufficient" | "insufficient";
-  chunks: RetrievedChunk[];
+  chunks: TChunk[];
   searchCalls: number;
 }
 
@@ -23,9 +23,9 @@ export interface RetrievalAgentConfig {
   budget?: Partial<RetrievalBudget>;
 }
 
-interface RetrievalRunState {
+interface RetrievalRunState<TChunk extends RetrievedChunk> {
   calls: number;
-  chunks: RetrievedChunk[];
+  chunks: TChunk[];
   chunkIds: Set<string>;
   contextTokens: number;
 }
@@ -76,11 +76,11 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export function collectUsefulChunks(
-  existing: RetrievedChunk[],
-  candidates: RetrievedChunk[],
+export function collectUsefulChunks<TChunk extends RetrievedChunk>(
+  existing: TChunk[],
+  candidates: TChunk[],
   budget: RetrievalBudget,
-): RetrievedChunk[] {
+): TChunk[] {
   const seen = new Set(existing.map(chunkIdentity));
   let tokens = existing.reduce((total, chunk) => total + estimateTokens(chunk.content), 0);
   const collected = [...existing];
@@ -103,15 +103,15 @@ const retrievalOutcomeSchema = z.object({
   status: z.enum(["sufficient", "insufficient"]),
 });
 
-export async function runRetrievalAgent(
+export async function runRetrievalAgent<TChunk extends RetrievedChunk = RetrievedChunk>(
   question: string,
   branchIndexId: string,
   config: RetrievalAgentConfig,
-  search: (branchIndexId: string, query: string, limit: number) => Promise<RetrievedChunk[]>,
+  search: (branchIndexId: string, query: string, limit: number) => Promise<TChunk[]>,
   runAgent: typeof run = run,
-): Promise<RetrievalOutcome> {
+): Promise<RetrievalOutcome<TChunk>> {
   const budget = getRetrievalBudget(config.budget);
-  const state: RetrievalRunState = {
+  const state: RetrievalRunState<TChunk> = {
     calls: 0,
     chunks: [],
     chunkIds: new Set(),
@@ -188,7 +188,7 @@ export async function runRetrievalAgent(
     outputType: retrievalOutcomeSchema,
   });
 
-  let status: RetrievalOutcome["status"] = "insufficient";
+  let status: RetrievalOutcome<TChunk>["status"] = "insufficient";
   try {
     const result = await runAgent(agent, `Original user question: ${question}`, {
       maxTurns: budget.maxAgentTurns,

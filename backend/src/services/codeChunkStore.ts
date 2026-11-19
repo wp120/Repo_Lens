@@ -225,24 +225,23 @@ export const prismaCodeChunkStore: CodeChunkStore = {
     processingToken: string,
     chunks: StorableCodeChunk[],
   ): Promise<void> {
-    await prisma.$transaction(async (tx) => {
-      const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `SELECT id FROM branch_indexes
-         WHERE id = $1::uuid
-           AND ingestion_attempt = $2
-           AND processing_token = $3::uuid
-         FOR UPDATE`,
-        branchIndexId,
-        ingestionAttempt,
-        processingToken,
-      );
-      if (owner.length === 0) {
-        throw new IngestionOwnershipLostError();
-      }
-      if (chunks.length === 0) return;
+    const stageBatch = async (batch: StorableCodeChunk[]) => {
+      await prisma.$transaction(async (tx) => {
+        const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT id FROM branch_indexes
+           WHERE id = $1::uuid
+             AND ingestion_attempt = $2
+             AND processing_token = $3::uuid
+           FOR UPDATE`,
+          branchIndexId,
+          ingestionAttempt,
+          processingToken,
+        );
+        if (owner.length === 0) {
+          throw new IngestionOwnershipLostError();
+        }
+        if (batch.length === 0) return;
 
-      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-        const batch = chunks.slice(i, i + BATCH_SIZE);
         const params: unknown[] = [];
         const placeholders: string[] = [];
 
@@ -298,8 +297,17 @@ export const prismaCodeChunkStore: CodeChunkStore = {
           ON CONFLICT (id) DO NOTHING`,
           ...params,
         );
-      }
-    });
+      });
+    };
+
+    if (chunks.length === 0) {
+      await stageBatch([]);
+      return;
+    }
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      await stageBatch(chunks.slice(i, i + BATCH_SIZE));
+    }
   },
 
   async claimBatchChunks(
@@ -497,6 +505,13 @@ export const prismaCodeChunkStore: CodeChunkStore = {
         branchIndexId,
         ingestionAttempt,
         commitSha,
+      );
+
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_chunks
+         WHERE branch_index_id = $1::uuid
+           AND embedding_status = 'pending'`,
+        branchIndexId,
       );
 
       await tx.$executeRawUnsafe(

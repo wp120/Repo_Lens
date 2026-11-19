@@ -1,6 +1,7 @@
 {
   "datasetId": "scribejava-master-retrieval-eval-v1",
   "version": "1.0.0",
+  "isActive": false,
   "repository": {
     "owner": "scribejava",
     "name": "scribejava",

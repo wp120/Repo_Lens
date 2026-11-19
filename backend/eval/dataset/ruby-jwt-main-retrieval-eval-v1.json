@@ -2,6 +2,7 @@
 {
   "datasetId": "ruby-jwt-main-retrieval-v1",
   "version": "1.0.0",
+  "isActive": false,
   "repository": {
     "owner": "jwt",
     "name": "ruby-jwt",

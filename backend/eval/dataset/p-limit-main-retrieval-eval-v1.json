@@ -1,6 +1,7 @@
 {
   "datasetId": "p-limit-main-retrieval-v1",
   "version": "1.0.0",
+  "isActive": false,
   "repository": {
     "owner": "sindresorhus",
     "name": "p-limit",

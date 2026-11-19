@@ -3,8 +3,6 @@ import { buildCitationUrl } from "./citationUrls.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
 import { retrieveRelevantChunks } from "./retrieval.js";
 
-export { retrieveRelevantChunks } from "./retrieval.js";
-
 export interface ConversationCitation {
   filePath: string;
   startLine: number;
@@ -148,7 +146,10 @@ export async function sendConversationMessage(
   });
   if (existingUser) {
     if (existingUser.status === "processing") {
-      throw new ConversationError("This message is still being processed.", 409);
+      throw new ConversationError(
+        "This message is still being processed.",
+        409,
+      );
     }
     if (existingUser.status === "failed") {
       await prisma.message.update({
@@ -156,14 +157,25 @@ export async function sendConversationMessage(
         data: { status: "processing" },
       });
     } else {
-      return { assistant: await findPersistedAssistant(conversationId, existingUser.id) };
+      return {
+        assistant: await findPersistedAssistant(
+          conversationId,
+          existingUser.id,
+        ),
+      };
     }
   }
   let userMessage = existingUser;
   if (!userMessage) {
     try {
       userMessage = await prisma.message.create({
-        data: { conversationId, role: "user", content, clientId, status: "processing" },
+        data: {
+          conversationId,
+          role: "user",
+          content,
+          clientId,
+          status: "processing",
+        },
       });
     } catch (error) {
       const concurrentUser = await prisma.message.findUnique({
@@ -172,9 +184,17 @@ export async function sendConversationMessage(
       });
       if (!concurrentUser) throw error;
       if (concurrentUser.status === "completed") {
-        return { assistant: await findPersistedAssistant(conversationId, concurrentUser.id) };
+        return {
+          assistant: await findPersistedAssistant(
+            conversationId,
+            concurrentUser.id,
+          ),
+        };
       }
-      throw new ConversationError("This message is still being processed.", 409);
+      throw new ConversationError(
+        "This message is still being processed.",
+        409,
+      );
     }
   }
   try {
@@ -220,7 +240,9 @@ export async function sendConversationMessage(
       });
       return assistant;
     });
-    return { assistant: await findPersistedAssistant(conversationId, userMessage.id) };
+    return {
+      assistant: await findPersistedAssistant(conversationId, userMessage.id),
+    };
   } catch (error) {
     await prisma.message.update({
       where: { id: userMessage.id },
@@ -252,10 +274,7 @@ async function requireOwnedConversation(
   }
 }
 
-async function retrieveAgentEvidence(
-  question: string,
-  branchIndexId: string,
-) {
+async function retrieveAgentEvidence(question: string, branchIndexId: string) {
   const apiKey = process.env.AI_API_KEY?.trim();
   const model = process.env.AI_CHAT_MODEL?.trim();
   if (!apiKey || !model) {
@@ -288,8 +307,8 @@ async function generateAnswer(
   const model = process.env.AI_CHAT_MODEL?.trim();
 
   console.log("Chunks provided for context: ", chunks.length);
-  chunks.forEach(chunk => {
-    console.log("From ", chunk.filePath , " ", chunk.content);
+  chunks.forEach((chunk) => {
+    console.log("From ", chunk.filePath, " ", chunk.content);
   });
 
   const sourcedChunks = chunks.map((chunk, index) => ({
@@ -298,7 +317,8 @@ async function generateAnswer(
   }));
   if (!chunks.length && retrievalStatus === "insufficient") {
     return {
-      content: "I could not find enough relevant indexed code to answer this question confidently. Please try a more specific question or ensure the repository branch has been indexed.",
+      content:
+        "I could not find enough relevant indexed code to answer this question confidently. Please try a more specific question or ensure the repository branch has been indexed.",
       citations: [],
     };
   }
@@ -313,26 +333,29 @@ async function generateAnswer(
     : "I could not find indexed code relevant to your question.";
 
   if (provider && apiKey && baseUrl && model && provider !== "voyage") {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${baseUrl.replace(/\/$/, "")}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: `Answer using only the supplied code. Reference sources inline using only tokens such as [S1]. Do not invent source IDs, file paths, lines, or claims.${retrievalStatus === "insufficient" ? " The retrieval agent marked the evidence insufficient. Answer only what is supported, explicitly identify missing information, and do not fill gaps with unsupported code details." : ""}`,
+            },
+            {
+              role: "user",
+              content: `Question: ${question}\n\nCode context:\n${content}`,
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content: `Answer using only the supplied code. Reference sources inline using only tokens such as [S1]. Do not invent source IDs, file paths, lines, or claims.${retrievalStatus === "insufficient" ? " The retrieval agent marked the evidence insufficient. Answer only what is supported, explicitly identify missing information, and do not fill gaps with unsupported code details." : ""}`,
-          },
-          {
-            role: "user",
-            content: `Question: ${question}\n\nCode context:\n${content}`,
-          },
-        ],
-      }),
-    });
+    );
     if (!response.ok) {
       throw new ConversationError("The AI response request failed.", 502);
     }
@@ -345,19 +368,29 @@ async function generateAnswer(
 
   const sourceIds = extractSourceIds(content);
   const citations = sourceIds.flatMap((sourceId) => {
-    const chunk = sourcedChunks.find((candidate) => candidate.sourceId === sourceId);
+    const chunk = sourcedChunks.find(
+      (candidate) => candidate.sourceId === sourceId,
+    );
     if (!chunk) return [];
     const url = repositoryUrl
-      ? buildCitationUrl(repositoryUrl, chunk.commitSha, chunk.filePath, chunk.startLine, chunk.endLine)
+      ? buildCitationUrl(
+          repositoryUrl,
+          chunk.commitSha,
+          chunk.filePath,
+          chunk.startLine,
+          chunk.endLine,
+        )
       : "";
-    return [{
-      filePath: chunk.filePath,
-      startLine: chunk.startLine,
-      endLine: chunk.endLine,
-      commitSha: chunk.commitSha,
-      url,
-      label: `${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`,
-    }];
+    return [
+      {
+        filePath: chunk.filePath,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        commitSha: chunk.commitSha,
+        url,
+        label: `${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`,
+      },
+    ];
   });
   return { content, citations };
 }
@@ -374,9 +407,15 @@ async function findPersistedAssistant(
   conversationId: string,
   userMessageId: string,
 ): Promise<PersistedMessage> {
-  const user = await prisma.message.findUniqueOrThrow({ where: { id: userMessageId } });
+  const user = await prisma.message.findUniqueOrThrow({
+    where: { id: userMessageId },
+  });
   const assistant = await prisma.message.findFirst({
-    where: { conversationId, role: "assistant", createdAt: { gt: user.createdAt } },
+    where: {
+      conversationId,
+      role: "assistant",
+      createdAt: { gt: user.createdAt },
+    },
     orderBy: { createdAt: "asc" },
     include: { citations: true },
   });
@@ -386,22 +425,41 @@ async function findPersistedAssistant(
   return formatPersistedMessage(assistant.id);
 }
 
-async function formatPersistedMessage(messageId: string): Promise<PersistedMessage> {
+async function formatPersistedMessage(
+  messageId: string,
+): Promise<PersistedMessage> {
   const message = await prisma.message.findUniqueOrThrow({
     where: { id: messageId },
     include: { citations: true },
   });
   const conversation = await prisma.conversation.findUniqueOrThrow({
     where: { id: message.conversationId },
-    include: { branchIndex: { include: { repository: { select: { htmlUrl: true } } } } },
+    include: {
+      branchIndex: { include: { repository: { select: { htmlUrl: true } } } },
+    },
   });
-  const role = message.role === "assistant" ? "assistant" as const : "user" as const;
-  const citations: ConversationCitation[] = message.citations.map((citation) => ({
-    ...citation,
-    url: buildCitationUrl(conversation.branchIndex.repository.htmlUrl, citation.commitSha, citation.filePath, citation.startLine, citation.endLine),
-    label: `${citation.filePath}:${citation.startLine}-${citation.endLine}`,
-  }));
-  return { id: message.id, role, content: message.content, createdAt: message.createdAt, citations };
+  const role =
+    message.role === "assistant" ? ("assistant" as const) : ("user" as const);
+  const citations: ConversationCitation[] = message.citations.map(
+    (citation) => ({
+      ...citation,
+      url: buildCitationUrl(
+        conversation.branchIndex.repository.htmlUrl,
+        citation.commitSha,
+        citation.filePath,
+        citation.startLine,
+        citation.endLine,
+      ),
+      label: `${citation.filePath}:${citation.startLine}-${citation.endLine}`,
+    }),
+  );
+  return {
+    id: message.id,
+    role,
+    content: message.content,
+    createdAt: message.createdAt,
+    citations,
+  };
 }
 
 function titleFromMessage(content: string) {

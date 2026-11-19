@@ -10,6 +10,7 @@ import {
   VOYAGE_MODEL,
 } from "../src/services/voyageEmbedding.js";
 import { retrieveRelevantChunks } from "../src/services/retrieval.js";
+import { runRetrievalAgent } from "../src/services/retrievalAgent.js";
 import type { RetrievedCodeChunk } from "../src/services/retrieval.js";
 import {
   calculateMacroMetrics,
@@ -374,6 +375,34 @@ function toReportResult(
   };
 }
 
+async function retrieveEvaluationChunks(
+  branchIndexId: string,
+  question: string,
+  topK: number,
+): Promise<RetrievedCodeChunk[]> {
+  const apiKey = process.env.AI_API_KEY?.trim();
+  const model = process.env.AI_CHAT_MODEL?.trim();
+  if (!apiKey || !model) {
+    console.log("API key or model name not provided for retrieval agent.");
+    return retrieveRelevantChunks(branchIndexId, question, topK);
+  }
+  const outcome = await runRetrievalAgent(
+    question,
+    branchIndexId,
+    {
+      apiKey,
+      baseUrl: process.env.AI_BASE_URL?.trim(),
+      model,
+      budget: { maxChunksPerSearch: topK, maxUniqueChunks: topK },
+    },
+    retrieveRelevantChunks,
+  );
+
+  console.log("Outcome status for agent retrieval: ", outcome.status);
+
+  return outcome.chunks;
+}
+
 function emptyRepositoryResult(loaded: LoadedDataset): RepositoryResult {
   const dataset = loaded.dataset;
   const result: RepositoryResult = {
@@ -431,14 +460,20 @@ async function evaluateDataset(
     if (result.repository)
       result.repository.indexedCommitSha = indexedCommitSha;
 
+    let questionInd: number = 0;
+
     for (const question of dataset.questions) {
       try {
-        const retrieved = await retrieveRelevantChunks(
+        questionInd++;
+
+        const retrieved = await retrieveEvaluationChunks(
           branch.id,
           question.question,
           topK,
         );
-        console.log("Retrieved for that dataset");
+        console.log(
+          `Retrieved ${retrieved.length} chunks for question no. ${questionInd}`,
+        );
         const retrievedResults = retrieved.map((chunk) =>
           toReportResult(chunk, question.expectedEvidence),
         );

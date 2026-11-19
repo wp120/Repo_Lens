@@ -1,13 +1,14 @@
 {
-  "datasetId": "jhalterman-typetools-master-retrieval-v1",
+  "datasetId": "jhalterman-typetools-main-retrieval-v1",
   "version": "1.0.0",
+  "isActive": false,
   "repository": {
     "owner": "jhalterman",
     "name": "typetools",
     "url": "https://github.com/jhalterman/typetools",
-    "branch": "master",
+    "branch": "main",
     "commitSha": null,
-    "commitPolicy": "Resolve and record the exact master HEAD SHA represented by the indexed branch. Verify expected evidence against that snapshot before treating scores as a stable baseline. The master branch is mutable."
+    "commitPolicy": "Resolve and record the exact main HEAD SHA represented by the indexed branch. Verify expected evidence against that snapshot before treating scores as a stable baseline. The main branch is mutable."
   },
   "questions": [
     {
