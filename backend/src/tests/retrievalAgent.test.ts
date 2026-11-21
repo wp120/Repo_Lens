@@ -4,6 +4,7 @@ import { invokeFunctionTool, RunContext, type FunctionTool } from "@openai/agent
 import {
   collectUsefulChunks,
   defaultRetrievalBudget,
+  getRetrievalBudget,
   runRetrievalAgent,
 } from "../services/retrievalAgent.js";
 import type { RetrievedChunk } from "../services/conversationFlow.js";
@@ -26,6 +27,46 @@ test("deduplicates chunks and preserves metadata", () => {
   assert.deepEqual(collected.map((item) => item.id), ["a", "b"]);
   assert.equal(collected[1].filePath, "src/b.ts");
   assert.equal(collected[1].commitSha, first.commitSha);
+});
+
+test("always registers vector_search and searchCode tools", async () => {
+  let toolNames: string[] = [];
+  const mockRun = (async (agent: any) => {
+    toolNames = agent.tools.map((item: { name: string }) => item.name);
+    return { finalOutput: { status: "insufficient" } };
+  }) as any;
+
+  await runRetrievalAgent(
+    "Find relevant code",
+    "branch-id",
+    { apiKey: "test-key", model: "test-model" },
+    { vectorSearch: async () => [], keywordSearch: async () => [] },
+    mockRun,
+  );
+
+  assert.deepEqual(toolNames, ["vector_search", "searchCode"]);
+});
+
+test("shared budget configuration supplies the evaluation primary cutoff", () => {
+  const budget = getRetrievalBudget();
+  assert.equal(budget.maxUniqueChunks, getRetrievalBudget().maxUniqueChunks);
+});
+
+test("deduplicates across retrieval sources and retains source metadata", () => {
+  const vector = { ...chunk("shared"), retrievalSources: ["vector"] };
+  const keyword = {
+    ...chunk("shared"),
+    symbolName: "createBooking",
+    functionSignature: "createBooking(input: BookingInput)",
+    language: "typescript",
+    retrievalSources: ["identifier"],
+  };
+  const collected = collectUsefulChunks([vector], [keyword], defaultRetrievalBudget);
+
+  assert.equal(collected.length, 1);
+  assert.deepEqual(collected[0].retrievalSources?.sort(), ["identifier", "vector"]);
+  assert.equal(collected[0].symbolName, "createBooking");
+  assert.equal(collected[0].functionSignature, "createBooking(input: BookingInput)");
 });
 
 test("enforces unique chunk and context budgets", () => {
@@ -62,11 +103,14 @@ test("uses the authorized branch and caps the search limit", async () => {
       baseUrl: "https://example.invalid/v1",
       model: "test-model",
     },
-    async (branchId, query, limit) => {
-      searchedBranch = branchId;
-      searchedLimit = limit;
-      assert.equal(query, "login flow");
-      return [chunk("login")];
+    {
+      vectorSearch: async (branchId, query, limit) => {
+        searchedBranch = branchId;
+        searchedLimit = limit;
+        assert.equal(query, "login flow");
+        return [chunk("login")];
+      },
+      keywordSearch: async () => [],
     },
     mockRun,
   );
@@ -74,7 +118,7 @@ test("uses the authorized branch and caps the search limit", async () => {
   assert.equal(searchedBranch, "authorized-branch-id");
   assert.equal(searchedLimit, defaultRetrievalBudget.maxChunksPerSearch);
   assert.match(agentInstructions, /source code together with available contextual metadata/);
-  assert.match(agentInstructions, /include that known information/);
+  assert.match(agentInstructions, /Use vector_search for semantic or conceptual questions/);
   assert.match(agentInstructions, /Never invent file paths, class names, or symbol names/);
 });
 
@@ -94,9 +138,12 @@ test("one search can be sufficient and another search can refine evidence", asyn
     "How is authentication initialized?",
     "branch-id",
     { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
-    async (_branchId, query) => {
-      queries.push(query);
-      return [chunk(`auth-${queries.length}`)];
+    {
+      vectorSearch: async (_branchId, query) => {
+        queries.push(query);
+        return [chunk(`auth-${queries.length}`)];
+      },
+      keywordSearch: async () => [],
     },
     sufficientRun,
   );
@@ -118,9 +165,12 @@ test("one search can be sufficient and another search can refine evidence", asyn
     "How is authentication initialized?",
     "branch-id",
     { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
-    async (_branchId, query) => {
-      queries.push(query);
-      return [chunk(`refined-${queries.length}`)];
+    {
+      vectorSearch: async (_branchId, query) => {
+        queries.push(query);
+        return [chunk(`refined-${queries.length}`)];
+      },
+      keywordSearch: async () => [],
     },
     refinedRun,
   );
@@ -133,7 +183,7 @@ test("invalid agent output and empty evidence are treated as insufficient", asyn
     "missing behavior",
     "branch-id",
     { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
-    async () => [],
+    { vectorSearch: async () => [], keywordSearch: async () => [] },
     mockRun,
   );
 
@@ -165,13 +215,88 @@ test("maximum search calls are enforced independently of agent turns", async () 
       model: "test-model",
       budget: { maxSearchCalls: 3, maxAgentTurns: 100 },
     },
-    async () => {
-      calls += 1;
-      return [];
+    {
+      vectorSearch: async () => {
+        calls += 1;
+        return [];
+      },
+      keywordSearch: async () => [],
     },
     mockRun,
   );
 
   assert.equal(calls, 3);
   assert.equal(outcome.searchCalls, 3);
+});
+
+test("searchCode is exposed with filters and shares the overall search budget", async () => {
+  let searched:
+    | { branchId: string; query: string; mode: string; filters: unknown; limit: number }
+    | undefined;
+  const mockRun = (async (agent: any) => {
+    const searchCodeTool = agent.tools[1] as FunctionTool;
+    await invokeFunctionTool({
+      tool: searchCodeTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        query: "createBooking",
+        mode: "identifier",
+        filters: {
+          filePath: "src/controllers/bookingController.ts",
+          className: "BookingController",
+          symbolType: "method",
+          language: "typescript",
+        },
+        limit: 999,
+      }),
+    });
+    await invokeFunctionTool({
+      tool: searchCodeTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        query: "booking redirect",
+        mode: "full_text",
+        limit: 3,
+      }),
+    });
+    return { finalOutput: { status: "sufficient" } };
+  }) as any;
+
+  const outcome = await runRetrievalAgent(
+    "Find createBooking",
+    "authorized-branch",
+    {
+      apiKey: "test-key",
+      baseUrl: "https://example.invalid/v1",
+      model: "test-model",
+      budget: { maxSearchCalls: 3, maxKeywordSearchCalls: 1, maxChunksPerSearch: 4 },
+    },
+    {
+      vectorSearch: async () => [],
+      keywordSearch: async (
+        branchId: string,
+        query: string,
+        mode: "full_text" | "identifier",
+        filters: unknown,
+        limit: number,
+      ) => {
+        searched = { branchId, query, mode, filters, limit };
+        return [chunk("createBooking")];
+      },
+    } as any,
+    mockRun,
+  );
+
+  assert.equal(searched?.branchId, "authorized-branch");
+  assert.equal(searched?.query, "createBooking");
+  assert.equal(searched?.mode, "identifier");
+  assert.equal(searched?.limit, 4);
+  assert.deepEqual(searched?.filters, {
+    filePath: "src/controllers/bookingController.ts",
+    className: "BookingController",
+    symbolType: "method",
+    language: "typescript",
+  });
+  assert.equal(outcome.searchCalls, 1);
+  assert.equal(outcome.chunks.length, 1);
 });

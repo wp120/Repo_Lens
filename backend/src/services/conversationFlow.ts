@@ -1,7 +1,7 @@
 import { prisma } from "../database/prisma.js";
 import { buildCitationUrl } from "./citationUrls.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
-import { retrieveRelevantChunks } from "./retrieval.js";
+import { retrieveRelevantChunks, searchCode } from "./retrieval.js";
 
 export interface ConversationCitation {
   filePath: string;
@@ -19,6 +19,12 @@ export interface RetrievedChunk {
   startLine: number;
   endLine: number;
   commitSha: string;
+  language?: string | null;
+  symbolName?: string | null;
+  symbolType?: string | null;
+  className?: string | null;
+  functionSignature?: string | null;
+  retrievalSources?: string[];
 }
 
 export interface SendMessageResponse {
@@ -291,7 +297,10 @@ async function retrieveAgentEvidence(question: string, branchIndexId: string) {
       baseUrl: process.env.AI_BASE_URL?.trim(),
       model,
     },
-    retrieveRelevantChunks,
+    {
+      vectorSearch: retrieveRelevantChunks,
+      keywordSearch: searchCode,
+    },
   );
 }
 

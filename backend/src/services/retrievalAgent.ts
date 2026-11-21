@@ -1,6 +1,7 @@
 import { Agent, OpenAIProvider, run, tool } from "@openai/agents";
 import { z } from "zod";
 import type { RetrievedChunk } from "./conversationFlow.js";
+import type { CodeSearchFilters, CodeSearchMode } from "./retrieval.js";
 
 export interface RetrievalBudget {
   maxSearchCalls: number;
@@ -8,6 +9,7 @@ export interface RetrievalBudget {
   maxUniqueChunks: number;
   maxContextTokens: number;
   maxAgentTurns: number;
+  maxKeywordSearchCalls: number;
 }
 
 export interface RetrievalOutcome<TChunk extends RetrievedChunk = RetrievedChunk> {
@@ -25,9 +27,27 @@ export interface RetrievalAgentConfig {
 
 interface RetrievalRunState<TChunk extends RetrievedChunk> {
   calls: number;
+  keywordCalls: number;
   chunks: TChunk[];
   chunkIds: Set<string>;
   contextTokens: number;
+}
+
+export type SearchCodeFunction<TChunk extends RetrievedChunk = RetrievedChunk> = (
+  branchIndexId: string,
+  query: string,
+  mode: CodeSearchMode,
+  filters: CodeSearchFilters,
+  limit: number,
+) => Promise<TChunk[]>;
+
+export interface RetrievalDependencies<TChunk extends RetrievedChunk = RetrievedChunk> {
+  vectorSearch: (
+    branchIndexId: string,
+    query: string,
+    limit: number,
+  ) => Promise<TChunk[]>;
+  keywordSearch: SearchCodeFunction<TChunk>;
 }
 
 export const defaultRetrievalBudget: RetrievalBudget = {
@@ -36,6 +56,7 @@ export const defaultRetrievalBudget: RetrievalBudget = {
   maxUniqueChunks: 25,
   maxContextTokens: 12000,
   maxAgentTurns: 12,
+  maxKeywordSearchCalls: 4,
 };
 
 export function getRetrievalBudget(
@@ -63,6 +84,10 @@ export function getRetrievalBudget(
       env.RETRIEVAL_MAX_AGENT_TURNS,
       defaultRetrievalBudget.maxAgentTurns,
     ),
+    maxKeywordSearchCalls: positiveInteger(
+      env.RETRIEVAL_MAX_KEYWORD_SEARCH_CALLS,
+      defaultRetrievalBudget.maxKeywordSearchCalls,
+    ),
   };
   return { ...configured, ...overrides };
 }
@@ -88,7 +113,18 @@ export function collectUsefulChunks<TChunk extends RetrievedChunk>(
   for (const chunk of candidates) {
     if (!chunk.content.trim()) continue;
     const id = chunkIdentity(chunk);
-    if (seen.has(id)) continue;
+    if (seen.has(id)) {
+      const existingIndex = collected.findIndex((item) => chunkIdentity(item) === id);
+      if (existingIndex >= 0) {
+        const existingChunk = collected[existingIndex];
+        const sources = new Set([
+          ...(existingChunk.retrievalSources ?? []),
+          ...(chunk.retrievalSources ?? []),
+        ]);
+        collected[existingIndex] = { ...existingChunk, ...chunk, retrievalSources: [...sources] } as TChunk;
+      }
+      continue;
+    }
     const tokensForChunk = estimateTokens(chunk.content);
     if (collected.length >= budget.maxUniqueChunks) break;
     if (tokens + tokensForChunk > budget.maxContextTokens) continue;
@@ -107,12 +143,14 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
   question: string,
   branchIndexId: string,
   config: RetrievalAgentConfig,
-  search: (branchIndexId: string, query: string, limit: number) => Promise<TChunk[]>,
+  dependencies: RetrievalDependencies<TChunk>,
   runAgent: typeof run = run,
 ): Promise<RetrievalOutcome<TChunk>> {
+  const { vectorSearch: vectorSearchDependency, keywordSearch } = dependencies;
   const budget = getRetrievalBudget(config.budget);
   const state: RetrievalRunState<TChunk> = {
     calls: 0,
+    keywordCalls: 0,
     chunks: [],
     chunkIds: new Set(),
     contextTokens: 0,
@@ -135,7 +173,7 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
         Math.max(1, Math.floor(limit)),
         budget.maxChunksPerSearch,
       );
-      const found = await search(branchIndexId, query.trim(), cappedLimit);
+      const found = await vectorSearchDependency(branchIndexId, query.trim(), cappedLimit);
       const before = state.chunks.length;
       const beforeIds = new Set(state.chunks.map(chunkIdentity));
       state.chunks = collectUsefulChunks(state.chunks, found, budget);
@@ -164,6 +202,73 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
     },
   });
 
+  const searchCodeTool = tool({
+        name: "searchCode",
+        description: "Search PostgreSQL text or exact code identifiers in the authorized branch index.",
+        parameters: z.object({
+          query: z.string().min(1),
+          mode: z.enum(["full_text", "identifier"]),
+          filters: z.object({
+            filePath: z.string().min(1).optional(),
+            className: z.string().min(1).optional(),
+            symbolName: z.string().min(1).optional(),
+            symbolType: z.string().min(1).optional(),
+            language: z.string().min(1).optional(),
+          }).strict().optional(),
+          limit: z.number().int().positive(),
+        }).strict(),
+        strict: true,
+        execute: async ({ query, mode, filters, limit }) => {
+          if (
+            state.calls >= budget.maxSearchCalls
+            || state.keywordCalls >= budget.maxKeywordSearchCalls
+          ) {
+            return { chunks: [], newChunks: 0, remainingSearches: 0, limitReached: true };
+          }
+          state.calls += 1;
+          state.keywordCalls += 1;
+          const cappedLimit = Math.min(
+            Math.max(1, Math.floor(limit)),
+            budget.maxChunksPerSearch,
+          );
+          const found = await keywordSearch(
+            branchIndexId,
+            query.trim(),
+            mode,
+            filters ?? {},
+            cappedLimit,
+          );
+          const before = state.chunks.length;
+          const beforeIds = new Set(state.chunks.map(chunkIdentity));
+          state.chunks = collectUsefulChunks(state.chunks, found, budget);
+          state.contextTokens = state.chunks.reduce(
+            (total, chunk) => total + estimateTokens(chunk.content),
+            0,
+          );
+          const newChunks = state.chunks.length - before;
+          const newChunkResults = state.chunks.filter(
+            (chunk) => !beforeIds.has(chunkIdentity(chunk)),
+          );
+          return {
+            chunks: newChunkResults,
+            newChunks,
+            remainingSearches: Math.max(0, budget.maxSearchCalls - state.calls),
+            remainingKeywordSearches: Math.max(
+              0,
+              budget.maxKeywordSearchCalls - state.keywordCalls,
+            ),
+            uniqueChunkCount: state.chunks.length,
+            remainingChunkCapacity: Math.max(0, budget.maxUniqueChunks - state.chunks.length),
+            contextTokens: state.contextTokens,
+            remainingContextTokenCapacity: Math.max(0, budget.maxContextTokens - state.contextTokens),
+            limitReached: state.calls >= budget.maxSearchCalls
+              || state.keywordCalls >= budget.maxKeywordSearchCalls
+              || state.chunks.length >= budget.maxUniqueChunks
+              || state.contextTokens >= budget.maxContextTokens,
+          };
+        },
+      });
+
   const provider = new OpenAIProvider({
     apiKey: config.apiKey,
     baseURL: config.baseUrl,
@@ -175,16 +280,20 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
       "You are a retrieval agent, not an answer generator.",
       "Search only for code evidence needed to answer the user's question.",
       "Chunk embeddings contain source code together with available contextual metadata, which may include file paths, class names, symbol names, and symbol types.",
-      "When the user's question mentions a file, class, or symbol, include that known information in the relevant vector_search query.",
+      "Use vector_search for semantic or conceptual questions.",
+      "Use searchCode with mode='full_text' for natural-language terms, phrases, comments, error messages, file names, symbols or signatures.",
+      "Use searchCode with mode='identifier' for a specific camelCase, PascalCase, snake_case or $-prefixed code identifier.",
+      "Apply searchCode filters only for file, class, symbol, symbol type or language values explicitly identified in the question or supported by earlier evidence.",
+      "When a file, class, or symbol is known, include it in vector_search text and use searchCode metadata filters when exactness is needed.",
       "Never invent file paths, class names, or symbol names; use only identifiers provided by the user or supported by retrieved evidence.",
-      "Use vector_search, evaluating each result before deciding whether another search is needed.",
+      "Combine vector_search and searchCode when one retrieval method is insufficient.",
       "A search result's remainingSearches field is authoritative. Stop if it reaches zero or if context limits are reached.",
       "If the search returns no new useful chunks, stop rather than repeating the same evidence.",
       "When enough evidence has been gathered, return sufficient. Otherwise return insufficient.",
       "Never create the final user-facing answer or cite sources yourself.",
     ].join("\n"),
     model: await provider.getModel(config.model),
-    tools: [vectorSearch],
+    tools: [vectorSearch, searchCodeTool],
     outputType: retrievalOutcomeSchema,
   });
 

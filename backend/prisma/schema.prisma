@@ -95,6 +95,7 @@ model CodeChunk {
   commitSha          String                      @map("commit_sha") @db.VarChar(40)
   sourceBlobSha      String?                     @map("source_blob_sha") @db.VarChar(40)
   embedding          Unsupported("vector(1024)")?
+  searchVector       Unsupported("tsvector")?    @map("search_vector")
   embeddingStatus    String                      @default("pending") @map("embedding_status") @db.VarChar(32)
   isActive           Boolean                     @default(false) @map("is_active")
   ingestionAttempt   Int                         @default(0) @map("ingestion_attempt")
