@@ -10,7 +10,10 @@ import {
   VOYAGE_MODEL,
 } from "../src/services/voyageEmbedding.js";
 import { retrieveRelevantChunks } from "../src/services/retrieval.js";
-import { runRetrievalAgent } from "../src/services/retrievalAgent.js";
+import {
+  getRetrievalBudget,
+  runRetrievalAgent,
+} from "../src/services/retrievalAgent.js";
 import type { RetrievedCodeChunk } from "../src/services/retrieval.js";
 import {
   calculateMacroMetrics,
@@ -86,26 +89,6 @@ interface RepositoryResult {
   questions: QuestionResult[];
   preflightWarnings: Array<Record<string, unknown>>;
   failureReason?: string;
-}
-
-function parseTopK(args: string[]): number {
-  let value: string | undefined;
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (argument.startsWith("--top-k=") || argument.startsWith("--topK=")) {
-      value = argument.slice(argument.indexOf("=") + 1);
-    } else if (argument === "--top-k" || argument === "--topK") {
-      value = args[index + 1];
-      index += 1;
-    } else {
-      throw new Error(`Unknown evaluation argument: ${argument}`);
-    }
-  }
-  const topK = value === undefined ? 6 : Number(value);
-  if (!Number.isSafeInteger(topK) || topK <= 0) {
-    throw new Error("--top-k must be a positive integer.");
-  }
-  return topK;
 }
 
 function normalizePath(filePath: string): string {
@@ -378,13 +361,12 @@ function toReportResult(
 async function retrieveEvaluationChunks(
   branchIndexId: string,
   question: string,
-  topK: number,
 ): Promise<RetrievedCodeChunk[]> {
   const apiKey = process.env.AI_API_KEY?.trim();
   const model = process.env.AI_CHAT_MODEL?.trim();
   if (!apiKey || !model) {
     console.log("API key or model name not provided for retrieval agent.");
-    return retrieveRelevantChunks(branchIndexId, question, topK);
+    return retrieveRelevantChunks(branchIndexId, question);
   }
   const outcome = await runRetrievalAgent(
     question,
@@ -393,7 +375,6 @@ async function retrieveEvaluationChunks(
       apiKey,
       baseUrl: process.env.AI_BASE_URL?.trim(),
       model,
-      budget: { maxChunksPerSearch: topK, maxUniqueChunks: topK },
     },
     retrieveRelevantChunks,
   );
@@ -469,7 +450,6 @@ async function evaluateDataset(
         const retrieved = await retrieveEvaluationChunks(
           branch.id,
           question.question,
-          topK,
         );
         console.log(
           `Retrieved ${retrieved.length} chunks for question no. ${questionInd}`,
@@ -582,7 +562,8 @@ function countQuestions(
 }
 
 async function main(): Promise<void> {
-  const topK = parseTopK(process.argv.slice(2));
+  const retrievalBudget = getRetrievalBudget();
+  const topK = retrievalBudget.maxUniqueChunks;
   const loadedDatasets = await loadActiveDatasets();
   if (loadedDatasets.length === 0) {
     throw new Error("No active retrieval datasets were found.");
@@ -636,6 +617,7 @@ async function main(): Promise<void> {
       completedRepositoryCount: multiMetrics.completedRepositoryCount,
       failedRepositoryCount: multiMetrics.failedRepositoryCount,
       topK,
+      retrievalBudget,
       retrievalMethod: "vector",
       embedding: {
         provider: "Voyage AI",
