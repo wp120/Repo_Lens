@@ -29,7 +29,7 @@ test("deduplicates chunks and preserves metadata", () => {
   assert.equal(collected[1].commitSha, first.commitSha);
 });
 
-test("always registers vector_search and searchCode tools", async () => {
+test("registers code retrieval and repository structure tools", async () => {
   let toolNames: string[] = [];
   const mockRun = (async (agent: any) => {
     toolNames = agent.tools.map((item: { name: string }) => item.name);
@@ -44,7 +44,11 @@ test("always registers vector_search and searchCode tools", async () => {
     mockRun,
   );
 
-  assert.deepEqual(toolNames, ["vector_search", "searchCode"]);
+  assert.deepEqual(toolNames, [
+    "vector_search",
+    "searchCode",
+    "repository_structure_lookup",
+  ]);
 });
 
 test("shared budget configuration supplies the evaluation primary cutoff", () => {
@@ -119,7 +123,75 @@ test("uses the authorized branch and caps the search limit", async () => {
   assert.equal(searchedLimit, defaultRetrievalBudget.maxChunksPerSearch);
   assert.match(agentInstructions, /source code together with available contextual metadata/);
   assert.match(agentInstructions, /Use vector_search for semantic or conceptual questions/);
+  assert.match(agentInstructions, /all Git-tracked file paths/);
+  assert.match(agentInstructions, /does not mean its contents have been retrieved/);
+  assert.match(agentInstructions, /metadata filters such as filePath/);
+  assert.match(agentInstructions, /structure is unavailable/);
+  assert.match(agentInstructions, /Do not assume the repository is empty or repeatedly retry/);
   assert.match(agentInstructions, /Never invent file paths, class names, or symbol names/);
+});
+
+test("repository structure lookup is bound to the conversation branch and paginated", async () => {
+  let lookup:
+    | {
+        branchIndexId: string;
+        query: {
+          mode: string;
+          path?: string;
+          query?: string;
+          offset?: number;
+          limit?: number;
+          depth?: number;
+        };
+      }
+    | undefined;
+  let structureResult: unknown;
+  const mockRun = (async (agent: any) => {
+    const structureTool = agent.tools[2] as FunctionTool;
+    structureResult = await invokeFunctionTool({
+      tool: structureTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        mode: "search",
+        query: "config",
+        offset: 10,
+        limit: 500,
+      }),
+    });
+    return { finalOutput: { status: "insufficient" } };
+  }) as any;
+
+  await runRetrievalAgent(
+    "Find configuration files",
+    "authorized-branch-id",
+    { apiKey: "test-key", model: "test-model" },
+    {
+      vectorSearch: async () => [],
+      keywordSearch: async () => [],
+      repositoryStructureLookup: async (branchIndexId, query) => {
+        lookup = { branchIndexId, query };
+        return {
+          status: "unavailable",
+          message: "Repository structure is unavailable for this branch.",
+        };
+      },
+    },
+    mockRun,
+  );
+
+  assert.equal(lookup?.branchIndexId, "authorized-branch-id");
+  assert.deepEqual(lookup?.query, {
+    mode: "search",
+    path: undefined,
+    query: "config",
+    offset: 10,
+    limit: 100,
+    depth: 2,
+  });
+  assert.deepEqual(structureResult, {
+    status: "unavailable",
+    message: "Repository structure is unavailable for this branch.",
+  });
 });
 
 test("one search can be sufficient and another search can refine evidence", async () => {

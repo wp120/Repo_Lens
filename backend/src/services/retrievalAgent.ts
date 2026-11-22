@@ -47,6 +47,17 @@ export interface RetrievalDependencies<TChunk extends RetrievedChunk = Retrieved
     query: string,
     limit: number,
   ) => Promise<TChunk[]>;
+  repositoryStructureLookup?: (
+    branchIndexId: string,
+    query: {
+      mode: "overview" | "list_directory" | "tree" | "search";
+      path?: string;
+      query?: string;
+      offset?: number;
+      limit?: number;
+      depth?: number;
+    },
+  ) => Promise<Record<string, unknown>>;
   keywordSearch: SearchCodeFunction<TChunk>;
 }
 
@@ -147,6 +158,7 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
   runAgent: typeof run = run,
 ): Promise<RetrievalOutcome<TChunk>> {
   const { vectorSearch: vectorSearchDependency, keywordSearch } = dependencies;
+  const repositoryStructureLookup = dependencies.repositoryStructureLookup;
   const budget = getRetrievalBudget(config.budget);
   const state: RetrievalRunState<TChunk> = {
     calls: 0,
@@ -269,6 +281,34 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
         },
       });
 
+  const repositoryStructureLookupTool = tool({
+    name: "repository_structure_lookup",
+    description:
+      "Explore the authorized branch's stored Git-tracked file paths. Use overview, directory listing, nested tree, or filename/path search as useful.",
+    parameters: z.object({
+      mode: z.enum(["overview", "list_directory", "tree", "search"]),
+      path: z.string().optional(),
+      query: z.string().optional(),
+      offset: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().optional(),
+      depth: z.number().int().positive().optional(),
+    }).strict(),
+    strict: true,
+    execute: async ({ mode, path, query, offset, limit, depth }) => {
+      if (!repositoryStructureLookup) {
+        throw new Error("Repository structure lookup is not configured.");
+      }
+      return repositoryStructureLookup(branchIndexId, {
+        mode,
+        path,
+        query,
+        offset,
+        limit: Math.min(limit ?? 50, 100),
+        depth: Math.min(depth ?? 2, 5),
+      });
+    },
+  });
+
   const provider = new OpenAIProvider({
     apiKey: config.apiKey,
     baseURL: config.baseUrl,
@@ -280,6 +320,10 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
       "You are a retrieval agent, not an answer generator.",
       "Search only for code evidence needed to answer the user's question.",
       "Chunk embeddings contain source code together with available contextual metadata, which may include file paths, class names, symbol names, and symbol types.",
+      "Repository structure contains all Git-tracked file paths, but does not guarantee that file contents are indexed or available through code retrieval.",
+      "A file appearing in repository structure does not mean its contents have been retrieved. Use existing retrieval tools and searchCode metadata filters such as filePath to retrieve indexed chunks when useful.",
+      "Decide independently whether repository structure is useful and which directories or files to explore; do not follow a fixed exploration sequence.",
+      "If repository_structure_lookup reports that structure is unavailable, continue with existing retrieval tools. Do not assume the repository is empty or repeatedly retry the lookup.",
       "Use vector_search for semantic or conceptual questions.",
       "Use searchCode with mode='full_text' for natural-language terms, phrases, comments, error messages, file names, symbols or signatures.",
       "Use searchCode with mode='identifier' for a specific camelCase, PascalCase, snake_case or $-prefixed code identifier.",
@@ -293,7 +337,7 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
       "Never create the final user-facing answer or cite sources yourself.",
     ].join("\n"),
     model: await provider.getModel(config.model),
-    tools: [vectorSearch, searchCodeTool],
+    tools: [vectorSearch, searchCodeTool, repositoryStructureLookupTool],
     outputType: retrievalOutcomeSchema,
   });
 

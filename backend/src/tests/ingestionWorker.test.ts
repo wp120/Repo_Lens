@@ -21,6 +21,9 @@ interface FakeBranchIndex {
   ingestionAttempt: number;
   lastError: string | null;
   processingToken: string | null;
+  repositoryFilePaths?: string[] | null;
+  pendingRepositoryFilePaths?: string[] | null;
+  publishedCommitSha?: string | null;
   repository: {
     owner: string;
     name: string;
@@ -49,6 +52,9 @@ class FakePrismaWorker {
         status?: string;
         lastError?: string | null;
         processingToken?: string | null;
+        repositoryFilePaths?: string[] | null;
+        pendingRepositoryFilePaths?: string[] | null;
+        publishedCommitSha?: string | null;
       };
     }) => {
       if (!this.branch || this.branch.id !== args.where.id) {
@@ -88,6 +94,15 @@ class FakePrismaWorker {
       if (args.data.processingToken !== undefined) {
         this.branch.processingToken = args.data.processingToken;
       }
+      if (args.data.repositoryFilePaths !== undefined) {
+        this.branch.repositoryFilePaths = args.data.repositoryFilePaths;
+      }
+      if (args.data.pendingRepositoryFilePaths !== undefined) {
+        this.branch.pendingRepositoryFilePaths = args.data.pendingRepositoryFilePaths;
+      }
+      if (args.data.publishedCommitSha !== undefined) {
+        this.branch.publishedCommitSha = args.data.publishedCommitSha;
+      }
       if (args.data.status !== undefined) {
         this.statusHistory.push(args.data.status);
       }
@@ -108,6 +123,23 @@ class FakePrismaWorker {
       return this.branch;
     },
   };
+
+  async $executeRawUnsafe(
+    _query: string,
+    branchIndexId: string,
+    ingestionAttempt: number,
+  ): Promise<number> {
+    if (
+      !this.branch ||
+      this.branch.id !== branchIndexId ||
+      this.branch.ingestionAttempt !== ingestionAttempt ||
+      this.branch.status !== "failed"
+    ) {
+      return 0;
+    }
+    this.branch.pendingRepositoryFilePaths = null;
+    return 1;
+  }
 }
 
 class FakeChunkStore implements CodeChunkStore {
@@ -122,9 +154,21 @@ class FakeChunkStore implements CodeChunkStore {
     ingestionAttempt: number,
     processingToken: string,
     chunks: StorableCodeChunk[],
+    commitSha: string,
   ): Promise<void> {
     this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
     this.savedChunks = [...chunks];
+    this.publishRepositoryFilePaths(commitSha);
+  }
+
+  async stageRepositoryFilePaths(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    filePaths: string[],
+  ): Promise<void> {
+    this.assertOwner(branchIndexId, ingestionAttempt, processingToken);
+    this.prisma.branch!.pendingRepositoryFilePaths = [...filePaths];
   }
 
   async deleteBranchChunks(
@@ -176,6 +220,7 @@ class FakeChunkStore implements CodeChunkStore {
     this.prisma.branch.status = "ready";
     this.prisma.branch.lastError = null;
     this.prisma.branch.processingToken = null;
+    this.publishRepositoryFilePaths(commitSha);
     this.prisma.statusHistory.push("ready");
     return true;
   }
@@ -194,6 +239,17 @@ class FakeChunkStore implements CodeChunkStore {
     ) {
       throw new IngestionOwnershipLostError();
     }
+  }
+
+  private publishRepositoryFilePaths(commitSha: string): void {
+    if (!this.prisma.branch?.pendingRepositoryFilePaths) {
+      throw new Error("Staged repository structure is missing.");
+    }
+    this.prisma.branch.repositoryFilePaths = [
+      ...this.prisma.branch.pendingRepositoryFilePaths,
+    ];
+    this.prisma.branch.pendingRepositoryFilePaths = null;
+    this.prisma.branch.publishedCommitSha = commitSha;
   }
 }
 
@@ -224,6 +280,7 @@ function createTestDependencies(options: {
   chunkStore: FakeChunkStore;
   commitSha?: string;
   files?: Array<{ path: string; size: number; sha: string }>;
+  repositoryFilePaths?: string[];
   contentBySha?: Record<string, string>;
   embedError?: boolean;
 }) {
@@ -239,7 +296,11 @@ function createTestDependencies(options: {
     prisma: options.prisma as unknown as IngestionWorkerDependencies["prisma"],
     chunkStore: options.chunkStore,
     resolveCommit: async () => commit,
-    fetchTree: async () => files,
+    fetchTree: async () => ({
+      indexableFiles: files,
+      repositoryFilePaths:
+        options.repositoryFilePaths ?? files.map((file) => file.path),
+    }),
     fetchContent: async (_owner, _repo, sha) => contents[sha] ?? "",
     chunker: async (filePath, content, commitSha) => [
       {
@@ -361,6 +422,57 @@ test("batch ingestion splits work into batches and keeps the branch ingesting", 
         batch.commitSha === "a".repeat(40),
     ),
   );
+});
+
+test("batch ingestion keeps the published structure until chunks are finalized", async () => {
+  const prisma = new FakePrismaWorker();
+  prisma.branch = {
+    id: "branch-1",
+    repositoryId: "repo-1",
+    branchName: "main",
+    status: "queued",
+    ingestionAttempt: 1,
+    lastError: null,
+    processingToken: null,
+    repositoryFilePaths: ["old/deleted.ts"],
+    repository: { owner: "sample-owner", name: "sample-repo" },
+  };
+  const chunkStore = new FakeChunkStore(prisma);
+  const deps = createTestDependencies({
+    prisma,
+    chunkStore,
+    repositoryFilePaths: [
+      "src/index.ts",
+      "README.md",
+      "assets/logo.png",
+      "node_modules/pkg/index.js",
+    ],
+  });
+  deps.enqueueBatchEmbeddings = async () => {};
+
+  await processIngestionJob(jobData, deps);
+
+  assert.deepEqual(prisma.branch.repositoryFilePaths, ["old/deleted.ts"]);
+  assert.deepEqual(prisma.branch.pendingRepositoryFilePaths, [
+    "src/index.ts",
+    "README.md",
+    "assets/logo.png",
+    "node_modules/pkg/index.js",
+  ]);
+  await chunkStore.finalizeIngestion(
+    "branch-1",
+    1,
+    prisma.branch.processingToken!,
+    "a".repeat(40),
+  );
+  assert.deepEqual(prisma.branch.repositoryFilePaths, [
+    "src/index.ts",
+    "README.md",
+    "assets/logo.png",
+    "node_modules/pkg/index.js",
+  ]);
+  assert.equal(prisma.branch.pendingRepositoryFilePaths, null);
+  assert.equal(prisma.branch.publishedCommitSha, "a".repeat(40));
 });
 
 test("batch ingestion finalizes immediately when there are no chunks", async () => {
@@ -656,6 +768,7 @@ test("processIngestionJob leaves terminal status handling to BullMQ after an err
     ingestionAttempt: 1,
     lastError: null,
     processingToken: null,
+    repositoryFilePaths: ["previous/snapshot.ts"],
     repository: { owner: "sample-owner", name: "sample-repo" },
   };
   const chunkStore = new FakeChunkStore(prisma);
@@ -700,6 +813,8 @@ test("processIngestionJob leaves terminal status handling to BullMQ after an err
   assert.equal(prisma.branch.status, "failed");
   assert.ok(prisma.branch.lastError?.includes("Voyage API failure"));
   assert.equal(prisma.branch.processingToken, null);
+  assert.deepEqual(prisma.branch.repositoryFilePaths, ["previous/snapshot.ts"]);
+  assert.equal(prisma.branch.pendingRepositoryFilePaths, null);
 });
 
 test("an intermediate BullMQ failure does not mark the branch failed", async () => {

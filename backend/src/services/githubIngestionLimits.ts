@@ -164,6 +164,11 @@ export interface IndexableFileEntry {
   sha: string;
 }
 
+export interface RepositoryFileInventory {
+  repositoryFilePaths: string[];
+  indexableFiles: IndexableFileEntry[];
+}
+
 export function isIndexableSourceFile(path: string): boolean {
   const normalized = path.replace(/\\/g, "/");
   const segments = normalized.split("/").filter(Boolean);
@@ -253,6 +258,18 @@ export async function fetchIndexableFiles(
   limits: GitHubIngestionLimits = ingestionLimits,
   fetcher: typeof fetch = fetch,
 ): Promise<IndexableFileEntry[]> {
+  return (
+    await fetchRepositoryFiles(owner, repository, commitSha, limits, fetcher)
+  ).indexableFiles;
+}
+
+export async function fetchRepositoryFiles(
+  owner: string,
+  repository: string,
+  commitSha: string,
+  limits: GitHubIngestionLimits = ingestionLimits,
+  fetcher: typeof fetch = fetch,
+): Promise<RepositoryFileInventory> {
   const apiRoot = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
   const maxFileBytes =
     limits.maxFileSizeBytes ?? ingestionLimits.maxFileSizeBytes;
@@ -268,17 +285,16 @@ export async function fetchIndexableFiles(
     treeResponse.tree.every(isTreeEntry)
   ) {
     const results: IndexableFileEntry[] = [];
+    const repositoryFilePaths: string[] = [];
     let fileCount = 0;
     let sourceBytes = 0;
 
     for (const entry of treeResponse.tree) {
-      if (
-        entry.type !== "blob" ||
-        typeof entry.path !== "string" ||
-        !isIndexableSourceFile(entry.path)
-      ) {
+      if (entry.type !== "blob" || typeof entry.path !== "string") {
         continue;
       }
+      repositoryFilePaths.push(entry.path);
+      if (!isIndexableSourceFile(entry.path)) continue;
       if (
         typeof entry.size !== "number" ||
         !Number.isSafeInteger(entry.size) ||
@@ -312,7 +328,7 @@ export async function fetchIndexableFiles(
         sha: typeof entry.sha === "string" ? entry.sha : "",
       });
     }
-    return results;
+    return { repositoryFilePaths, indexableFiles: results };
   }
 
   // Fallback: non-recursive traversal when recursive tree is truncated or not provided
@@ -347,11 +363,12 @@ async function traverseTreeNonRecursive(
   limits: GitHubIngestionLimits,
   maxFileBytes: number,
   fetcher: typeof fetch,
-): Promise<IndexableFileEntry[]> {
+): Promise<RepositoryFileInventory> {
   const queue: Array<{ sha: string; prefix: string }> = [
     { sha: rootSha, prefix: "" },
   ];
   const results: IndexableFileEntry[] = [];
+  const repositoryFilePaths: string[] = [];
   const visitedTrees = new Set<string>();
   let fileCount = 0;
   let sourceBytes = 0;
@@ -384,16 +401,12 @@ async function traverseTreeNonRecursive(
         : entry.path;
 
       if (entry.type === "tree") {
-        if (EXCLUDED_DIRECTORIES.has(entry.path)) {
-          continue;
-        }
         if (typeof entry.sha === "string" && entry.sha) {
           queue.push({ sha: entry.sha, prefix: fullPath });
         }
       } else if (entry.type === "blob") {
-        if (!isIndexableSourceFile(fullPath)) {
-          continue;
-        }
+        repositoryFilePaths.push(fullPath);
+        if (!isIndexableSourceFile(fullPath)) continue;
         if (
           typeof entry.size !== "number" ||
           !Number.isSafeInteger(entry.size) ||
@@ -430,7 +443,7 @@ async function traverseTreeNonRecursive(
     }
   }
 
-  return results;
+  return { repositoryFilePaths, indexableFiles: results };
 }
 
 export async function fetchBlobContent(
@@ -461,5 +474,12 @@ export async function fetchBlobContent(
 }
 
 function isTreeEntry(entry: unknown): entry is TreeEntry {
-  return typeof entry === "object" && entry !== null;
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    "type" in entry &&
+    typeof entry.type === "string" &&
+    "path" in entry &&
+    typeof entry.path === "string"
+  );
 }

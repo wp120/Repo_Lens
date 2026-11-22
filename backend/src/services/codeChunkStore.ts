@@ -25,6 +25,7 @@ export interface CodeChunkStore {
     ingestionAttempt: number,
     processingToken: string,
     chunks: StorableCodeChunk[],
+    commitSha: string,
   ) => Promise<void>;
   deleteBranchChunks?: (
     branchIndexId: string,
@@ -32,6 +33,12 @@ export interface CodeChunkStore {
     processingToken: string,
   ) => Promise<void>;
   countBranchChunks?: (branchIndexId: string) => Promise<number>;
+  stageRepositoryFilePaths?: (
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    filePaths: string[],
+  ) => Promise<void>;
   stageChunks?: (
     branchIndexId: string,
     ingestionAttempt: number,
@@ -95,11 +102,34 @@ function toVectorString(values: number[]): string {
 }
 
 export const prismaCodeChunkStore: CodeChunkStore = {
+  async stageRepositoryFilePaths(
+    branchIndexId: string,
+    ingestionAttempt: number,
+    processingToken: string,
+    filePaths: string[],
+  ): Promise<void> {
+    const result = await prisma.$executeRawUnsafe(
+      `UPDATE branch_indexes
+       SET pending_repository_file_paths = $4::jsonb
+       WHERE id = $1::uuid
+         AND ingestion_attempt = $2
+         AND processing_token = $3::uuid`,
+      branchIndexId,
+      ingestionAttempt,
+      processingToken,
+      JSON.stringify(filePaths),
+    );
+    if (result !== 1) {
+      throw new IngestionOwnershipLostError();
+    }
+  },
+
   async saveChunks(
     branchIndexId: string,
     ingestionAttempt: number,
     processingToken: string,
     chunks: StorableCodeChunk[],
+    commitSha: string,
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
       const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
@@ -120,8 +150,6 @@ export const prismaCodeChunkStore: CodeChunkStore = {
         "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
         branchIndexId,
       );
-
-      if (chunks.length === 0) return;
 
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
@@ -179,6 +207,24 @@ export const prismaCodeChunkStore: CodeChunkStore = {
 
         await tx.$executeRawUnsafe(sql, ...params);
       }
+
+      const published = await tx.$executeRawUnsafe(
+        `UPDATE branch_indexes
+         SET repository_file_paths = pending_repository_file_paths,
+             pending_repository_file_paths = NULL,
+             published_commit_sha = $4
+         WHERE id = $1::uuid
+           AND ingestion_attempt = $2
+           AND processing_token = $3::uuid
+           AND pending_repository_file_paths IS NOT NULL`,
+        branchIndexId,
+        ingestionAttempt,
+        processingToken,
+        commitSha,
+      );
+      if (published !== 1) {
+        throw new Error("Staged repository structure is missing.");
+      }
     });
   },
 
@@ -201,7 +247,6 @@ export const prismaCodeChunkStore: CodeChunkStore = {
       if (owner.length === 0) {
         throw new IngestionOwnershipLostError();
       }
-
       await tx.$executeRawUnsafe(
         "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
         branchIndexId,
@@ -343,7 +388,24 @@ export const prismaCodeChunkStore: CodeChunkStore = {
            AND ingestion_attempt = $2
            AND embedding_status IN ('pending', 'failed', 'processing')
            AND is_active = false
-         RETURNING *`,
+         RETURNING
+           id,
+           branch_index_id AS "branchIndexId",
+           file_path AS "filePath",
+           content,
+           start_line AS "startLine",
+           end_line AS "endLine",
+           language,
+           symbol_name AS "symbolName",
+           symbol_type AS "symbolType",
+           class_name AS "className",
+           function_signature AS "functionSignature",
+           commit_sha AS "commitSha",
+           source_blob_sha AS "sourceBlobSha",
+           embedding_status AS "embeddingStatus",
+           is_active AS "isActive",
+           ingestion_attempt AS "ingestionAttempt",
+           batch_execution_token AS "batchExecutionToken"`,
          branchIndexId,
          ingestionAttempt,
          batchExecutionToken,
@@ -457,8 +519,12 @@ export const prismaCodeChunkStore: CodeChunkStore = {
     commitSha: string,
   ): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
-      const owner = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `SELECT id FROM branch_indexes
+      const owner = await tx.$queryRawUnsafe<
+        Array<{ id: string; has_pending_repository_file_paths: boolean }>
+      >(
+        `SELECT id,
+                pending_repository_file_paths IS NOT NULL AS has_pending_repository_file_paths
+         FROM branch_indexes
          WHERE id = $1::uuid
            AND ingestion_attempt = $2
            AND processing_token = $3::uuid
@@ -469,6 +535,9 @@ export const prismaCodeChunkStore: CodeChunkStore = {
       );
       if (owner.length === 0) {
         throw new IngestionOwnershipLostError();
+      }
+      if (!owner[0].has_pending_repository_file_paths) {
+        throw new Error("Staged repository structure is missing.");
       }
 
       const incomplete = await tx.$queryRawUnsafe<Array<{ count: string | number | bigint }>>(
@@ -520,10 +589,13 @@ export const prismaCodeChunkStore: CodeChunkStore = {
              last_error = NULL,
              processing_token = NULL,
              published_commit_sha = $4,
+             repository_file_paths = pending_repository_file_paths,
+             pending_repository_file_paths = NULL,
              updated_at = NOW()
          WHERE id = $1::uuid
            AND ingestion_attempt = $2
-           AND processing_token = $3::uuid`,
+           AND processing_token = $3::uuid
+           AND pending_repository_file_paths IS NOT NULL`,
         branchIndexId,
         ingestionAttempt,
         processingToken,
@@ -561,6 +633,7 @@ export const prismaCodeChunkStore: CodeChunkStore = {
          SET status = 'failed',
              last_error = $4,
              processing_token = NULL,
+             pending_repository_file_paths = NULL,
              updated_at = NOW()
          WHERE id = $1::uuid
            AND ingestion_attempt = $2

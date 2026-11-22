@@ -45,6 +45,8 @@ model BranchIndex {
   lastError        String?               @map("last_error") @db.Text
   processingToken  String?               @map("processing_token") @db.Uuid
   publishedCommitSha String?              @map("published_commit_sha") @db.VarChar(40)
+  repositoryFilePaths Json?               @map("repository_file_paths") @db.JsonB
+  pendingRepositoryFilePaths Json?        @map("pending_repository_file_paths") @db.JsonB
   repository       Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   userAccess       UserBranchAccess[]
   ingestions       UserBranchIngestion[]

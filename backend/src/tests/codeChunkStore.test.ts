@@ -175,3 +175,240 @@ test("staging still fails when a batch no longer owns its branch", async () => {
     }
   }
 });
+
+test("claiming chunks does not deserialize unsupported tsvector columns", async () => {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    prisma,
+    "$transaction",
+  );
+  let claimQuery = "";
+  Object.defineProperty(prisma, "$transaction", {
+    configurable: true,
+    value: async (
+      callback: (tx: {
+        $queryRawUnsafe: <T>(query: string, ...values: unknown[]) => Promise<T>;
+        $executeRawUnsafe: (
+          query: string,
+          ...values: unknown[]
+        ) => Promise<number>;
+      }) => Promise<unknown>,
+    ) =>
+      callback({
+        $queryRawUnsafe: async (query: string) => {
+          if (query.includes("FOR UPDATE")) {
+            return [{ id: "branch-index-id" }] as never;
+          }
+          claimQuery = query;
+          return [{
+            id: "00000000-0000-4000-8000-000000000001",
+            branchIndexId: "branch-index-id",
+            filePath: "src/file.ts",
+            content: "content",
+            startLine: 1,
+            endLine: 1,
+            language: "typescript",
+            symbolName: "symbol",
+            symbolType: null,
+            className: null,
+            functionSignature: null,
+            commitSha: "0123456789abcdef0123456789abcdef01234567",
+            sourceBlobSha: null,
+            embeddingStatus: "processing",
+            isActive: false,
+            ingestionAttempt: 7,
+            batchExecutionToken: "batch-token",
+          }] as never;
+        },
+        $executeRawUnsafe: async () => 1,
+      }),
+  });
+
+  try {
+    const claimed = await prismaCodeChunkStore.claimBatchChunks!(
+      "branch-index-id",
+      7,
+      "processing-token",
+      "batch-token",
+      ["00000000-0000-4000-8000-000000000001"],
+    );
+
+    assert.equal(claimed.length, 1);
+    assert.match(claimQuery, /RETURNING/);
+    assert.doesNotMatch(claimQuery, /\bRETURNING\s+\*/);
+    assert.doesNotMatch(claimQuery, /search_vector/);
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(prisma, "$transaction", originalDescriptor);
+    } else {
+      delete (prisma as { $transaction?: unknown }).$transaction;
+    }
+  }
+});
+
+test("finalization publishes the staged repository structure in the chunk transaction", async () => {
+  const statements: Array<{ query: string; values: unknown[] }> = [];
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    prisma,
+    "$transaction",
+  );
+  Object.defineProperty(prisma, "$transaction", {
+    configurable: true,
+    value: async (
+      callback: (tx: {
+        $queryRawUnsafe: <T>(query: string, ...values: unknown[]) => Promise<T>;
+        $executeRawUnsafe: (
+          query: string,
+          ...values: unknown[]
+        ) => Promise<number>;
+      }) => Promise<unknown>,
+    ) =>
+      callback({
+        $queryRawUnsafe: async (query) => {
+          if (query.includes("has_pending_repository_file_paths")) {
+            return [{
+              id: "branch-index-id",
+              has_pending_repository_file_paths: true,
+            }] as never;
+          }
+          return [{ count: 0 }] as never;
+        },
+        $executeRawUnsafe: async (query, ...values) => {
+          statements.push({ query, values });
+          return 1;
+        },
+      }),
+  });
+
+  try {
+    const finalized = await prismaCodeChunkStore.finalizeIngestion!(
+      "branch-index-id",
+      7,
+      "processing-token",
+      "0123456789abcdef0123456789abcdef01234567",
+    );
+
+    assert.equal(finalized, true);
+    const publish = statements.find(({ query }) =>
+      query.includes("repository_file_paths = pending_repository_file_paths"),
+    );
+    assert.ok(publish);
+    assert.match(publish.query, /pending_repository_file_paths = NULL/);
+    assert.deepEqual(publish.values, [
+      "branch-index-id",
+      7,
+      "processing-token",
+      "0123456789abcdef0123456789abcdef01234567",
+    ]);
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(prisma, "$transaction", originalDescriptor);
+    } else {
+      delete (prisma as { $transaction?: unknown }).$transaction;
+    }
+  }
+});
+
+test("repository paths are staged only for the current ingestion owner", async () => {
+  const statements: Array<{ query: string; values: unknown[] }> = [];
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    prisma,
+    "$executeRawUnsafe",
+  );
+  Object.defineProperty(prisma, "$executeRawUnsafe", {
+    configurable: true,
+    value: async (query: string, ...values: unknown[]) => {
+      statements.push({ query, values });
+      return 1;
+    },
+  });
+
+  try {
+    const filePaths = ["README.md", "assets/logo.png", "src/index.ts"];
+    await prismaCodeChunkStore.stageRepositoryFilePaths!(
+      "branch-index-id",
+      7,
+      "processing-token",
+      filePaths,
+    );
+
+    assert.match(statements[0].query, /pending_repository_file_paths = \$4::jsonb/);
+    assert.match(statements[0].query, /processing_token = \$3::uuid/);
+    assert.deepEqual(statements[0].values, [
+      "branch-index-id",
+      7,
+      "processing-token",
+      JSON.stringify(filePaths),
+    ]);
+
+    Object.defineProperty(prisma, "$executeRawUnsafe", {
+      configurable: true,
+      value: async () => 0,
+    });
+    await assert.rejects(
+      prismaCodeChunkStore.stageRepositoryFilePaths!(
+        "branch-index-id",
+        7,
+        "stale-token",
+        filePaths,
+      ),
+      (error) => error instanceof IngestionOwnershipLostError,
+    );
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(prisma, "$executeRawUnsafe", originalDescriptor);
+    } else {
+      delete (prisma as { $executeRawUnsafe?: unknown }).$executeRawUnsafe;
+    }
+  }
+});
+
+test("finalization leaves the published structure untouched while chunks are incomplete", async () => {
+  const statements: string[] = [];
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    prisma,
+    "$transaction",
+  );
+  Object.defineProperty(prisma, "$transaction", {
+    configurable: true,
+    value: async (
+      callback: (tx: {
+        $queryRawUnsafe: <T>(query: string, ...values: unknown[]) => Promise<T>;
+        $executeRawUnsafe: (
+          query: string,
+          ...values: unknown[]
+        ) => Promise<number>;
+      }) => Promise<unknown>,
+    ) =>
+      callback({
+        $queryRawUnsafe: async (query) =>
+          query.includes("has_pending_repository_file_paths")
+            ? ([{
+                id: "branch-index-id",
+                has_pending_repository_file_paths: true,
+              }] as never)
+            : ([{ count: 1 }] as never),
+        $executeRawUnsafe: async (query) => {
+          statements.push(query);
+          return 1;
+        },
+      }),
+  });
+
+  try {
+    const finalized = await prismaCodeChunkStore.finalizeIngestion!(
+      "branch-index-id",
+      7,
+      "processing-token",
+      "0123456789abcdef0123456789abcdef01234567",
+    );
+
+    assert.equal(finalized, false);
+    assert.deepEqual(statements, []);
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(prisma, "$transaction", originalDescriptor);
+    } else {
+      delete (prisma as { $transaction?: unknown }).$transaction;
+    }
+  }
+});

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isIndexableSourceFile,
   fetchIndexableFiles,
+  fetchRepositoryFiles,
   type GitHubIngestionLimits,
 } from "../services/githubIngestionLimits.js";
 
@@ -76,6 +77,7 @@ test("fetchIndexableFiles falls back to non-recursive traversal when tree is tru
 
   const rootSha = "a".repeat(40);
   const srcSha = "b".repeat(40);
+  const modulesSha = "d".repeat(40);
 
   const fakeFetcher: typeof fetch = async (url) => {
     const urlStr = url.toString();
@@ -99,7 +101,7 @@ test("fetchIndexableFiles falls back to non-recursive traversal when tree is tru
           tree: [
             { type: "tree", path: "src", sha: srcSha },
             { type: "blob", path: "README.md", size: 40, sha: "sha-readme" },
-            { type: "tree", path: "node_modules", sha: "ignored-modules" },
+            { type: "tree", path: "node_modules", sha: modulesSha },
           ],
         }),
         { status: 200 },
@@ -113,6 +115,17 @@ test("fetchIndexableFiles falls back to non-recursive traversal when tree is tru
           truncated: false,
           tree: [
             { type: "blob", path: "index.ts", size: 60, sha: "sha-index" },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (urlStr.includes(`/git/trees/${modulesSha}`)) {
+      return new Response(
+        JSON.stringify({
+          truncated: false,
+          tree: [
+            { type: "blob", path: "index.js", size: 12, sha: "sha-module" },
           ],
         }),
         { status: 200 },
@@ -137,6 +150,61 @@ test("fetchIndexableFiles falls back to non-recursive traversal when tree is tru
   );
   assert.equal(files.find((f) => f.path === "README.md")?.size, 40);
   assert.equal(files.find((f) => f.path === "src/index.ts")?.size, 60);
+  const inventory = await fetchRepositoryFiles(
+    "owner",
+    "repo",
+    rootSha,
+    limits,
+    fakeFetcher,
+  );
+  assert.deepEqual(
+    inventory.repositoryFilePaths.sort(),
+    ["README.md", "node_modules/index.js", "src/index.ts"].sort(),
+  );
+  assert.deepEqual(
+    inventory.indexableFiles.map((file) => file.path).sort(),
+    ["README.md", "src/index.ts"].sort(),
+  );
+});
+
+test("fetchRepositoryFiles includes all blobs from a complete recursive Git tree", async () => {
+  const limits: GitHubIngestionLimits = {
+    repositorySizeKb: 1000,
+    indexableFileCount: 100,
+    indexableSourceBytes: 100000,
+    maxFileSizeBytes: 10000,
+  };
+  const fakeFetcher: typeof fetch = async (url) => {
+    assert.match(url.toString(), /recursive=1/);
+    return new Response(
+      JSON.stringify({
+        truncated: false,
+        tree: [
+          { type: "blob", path: "src/main.ts", size: 20, sha: "source" },
+          { type: "blob", path: "assets/logo.png", size: 30, sha: "image" },
+          { type: "blob", path: "package-lock.json", size: 40, sha: "lock" },
+          { type: "tree", path: "src", sha: "tree" },
+        ],
+      }),
+      { status: 200 },
+    );
+  };
+
+  const inventory = await fetchRepositoryFiles(
+    "owner",
+    "repo",
+    "a".repeat(40),
+    limits,
+    fakeFetcher,
+  );
+  assert.deepEqual(inventory.repositoryFilePaths, [
+    "src/main.ts",
+    "assets/logo.png",
+    "package-lock.json",
+  ]);
+  assert.deepEqual(inventory.indexableFiles.map((file) => file.path), [
+    "src/main.ts",
+  ]);
 });
 
 test("fetchIndexableFiles fails safely when non-recursive traversal is also truncated", async () => {

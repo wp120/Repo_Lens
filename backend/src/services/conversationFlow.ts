@@ -2,6 +2,7 @@ import { prisma } from "../database/prisma.js";
 import { buildCitationUrl } from "./citationUrls.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
 import { retrieveRelevantChunks, searchCode } from "./retrieval.js";
+import { lookupRepositoryStructure } from "./repositoryStructure.js";
 
 export interface ConversationCitation {
   filePath: string;
@@ -300,6 +301,7 @@ async function retrieveAgentEvidence(question: string, branchIndexId: string) {
     {
       vectorSearch: retrieveRelevantChunks,
       keywordSearch: searchCode,
+      repositoryStructureLookup: lookupRepositoryStructure,
     },
   );
 }

@@ -4,10 +4,10 @@ import { createRedisConnection } from "../config/redis.js";
 import { ingestionLimits } from "../config/ingestionLimits.js";
 import { prisma as defaultPrisma } from "../database/prisma.js";
 import {
-  fetchIndexableFiles,
+  fetchRepositoryFiles,
   fetchBlobContent,
-  type IndexableFileEntry,
   type GitHubIngestionLimits,
+  type RepositoryFileInventory,
 } from "../services/githubIngestionLimits.js";
 import {
   getGitHubJson,
@@ -46,7 +46,7 @@ export interface IngestionWorkerDependencies {
     repo: string,
     commitSha: string,
     limits?: GitHubIngestionLimits,
-  ) => Promise<IndexableFileEntry[]>;
+  ) => Promise<RepositoryFileInventory>;
   fetchContent: (
     owner: string,
     repo: string,
@@ -114,7 +114,7 @@ export const defaultWorkerDependencies: IngestionWorkerDependencies = {
   resolveCommit: (owner, repo, branch) =>
     resolveBranchCommit(owner, repo, branch),
   fetchTree: (owner, repo, commitSha, limits) =>
-    fetchIndexableFiles(owner, repo, commitSha, limits),
+    fetchRepositoryFiles(owner, repo, commitSha, limits),
   fetchContent: (owner, repo, blobSha) =>
     fetchBlobContent(owner, repo, blobSha),
   chunker: (path, content, sha, cfg) =>
@@ -180,12 +180,22 @@ export async function processIngestionJob(
     );
 
     // Retrieve and validate complete file tree and limits
-    const files = await deps.fetchTree(
+    const inventory = await deps.fetchTree(
       branchIndex.repository.owner,
       branchIndex.repository.name,
       commitSha,
       ingestionLimits,
     );
+    if (!deps.chunkStore.stageRepositoryFilePaths) {
+      throw new Error("Repository structure staging is not configured.");
+    }
+    await deps.chunkStore.stageRepositoryFilePaths(
+      branchIndex.id,
+      jobData.attempt,
+      processingToken,
+      inventory.repositoryFilePaths,
+    );
+    const files = inventory.indexableFiles;
 
     // Fetch eligible source files with size limits
     const maxFileBytes = ingestionLimits.maxFileSizeBytes;
@@ -312,14 +322,16 @@ export async function processIngestionJob(
     }
 
     // Store chunks and embeddings atomically
-    if (deps.chunkStore.saveChunks) {
-      await deps.chunkStore.saveChunks(
-        branchIndex.id,
-        jobData.attempt,
-        processingToken,
-        allChunks,
-      );
+    if (!deps.chunkStore.saveChunks) {
+      throw new Error("Chunk persistence is not configured.");
     }
+    await deps.chunkStore.saveChunks(
+      branchIndex.id,
+      jobData.attempt,
+      processingToken,
+      allChunks,
+      commitSha,
+    );
 
     const readyTransition = await deps.prisma.branchIndex.updateMany({
       where: {
@@ -377,7 +389,7 @@ export async function handleIngestionJobFailure(
     return;
   }
 
-  await db.branchIndex.updateMany({
+  const failed = await db.branchIndex.updateMany({
     where: {
       id: job.data.branchIndexId,
       ingestionAttempt: job.data.attempt,
@@ -389,6 +401,17 @@ export async function handleIngestionJobFailure(
       processingToken: null,
     },
   });
+  if (failed.count > 0) {
+    await db.$executeRawUnsafe(
+      `UPDATE branch_indexes
+       SET pending_repository_file_paths = NULL
+       WHERE id = $1::uuid
+         AND ingestion_attempt = $2
+         AND status = 'failed'`,
+      job.data.branchIndexId,
+      job.data.attempt,
+    );
+  }
 }
 
 let ingestionWorker: Worker<IngestionJob> | undefined;
