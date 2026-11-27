@@ -9,12 +9,12 @@ datasource db {
 }
 
 model User {
-  id           String                @id @default(uuid()) @db.Uuid
-  email        String                @unique @db.VarChar(320)
-  passwordHash String                @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  branchAccess UserBranchAccess[]
-  ingestions   UserBranchIngestion[]
+  id            String                @id @default(uuid()) @db.Uuid
+  email         String                @unique @db.VarChar(320)
+  passwordHash  String                @map("password_hash") @db.VarChar(255)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  branchAccess  UserBranchAccess[]
+  ingestions    UserBranchIngestion[]
   conversations Conversation[]
 
   @@map("users")
@@ -35,23 +35,26 @@ model Repository {
 }
 
 model BranchIndex {
-  id               String                @id @default(uuid()) @db.Uuid
-  repositoryId     String                @map("repository_id") @db.Uuid
-  branchName       String                @map("branch_name") @db.VarChar(255)
-  status           String                @default("queued") @db.VarChar(32)
-  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
-  ingestionAttempt Int                   @default(0) @map("ingestion_attempt")
-  lastError        String?               @map("last_error") @db.Text
-  processingToken  String?               @map("processing_token") @db.Uuid
-  publishedCommitSha String?              @map("published_commit_sha") @db.VarChar(40)
-  repositoryFilePaths Json?               @map("repository_file_paths") @db.JsonB
-  pendingRepositoryFilePaths Json?        @map("pending_repository_file_paths") @db.JsonB
-  repository       Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  userAccess       UserBranchAccess[]
-  ingestions       UserBranchIngestion[]
-  codeChunks       CodeChunk[]
-  conversations    Conversation[]
+  id                         String                @id @default(uuid()) @db.Uuid
+  repositoryId               String                @map("repository_id") @db.Uuid
+  branchName                 String                @map("branch_name") @db.VarChar(255)
+  status                     String                @default("queued") @db.VarChar(32)
+  createdAt                  DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ingestionAttempt           Int                   @default(0) @map("ingestion_attempt")
+  lastError                  String?               @map("last_error") @db.Text
+  processingToken            String?               @map("processing_token") @db.Uuid
+  publishedCommitSha         String?               @map("published_commit_sha") @db.VarChar(40)
+  repositoryFilePaths        Json?                 @map("repository_file_paths") @db.JsonB
+  pendingRepositoryFilePaths Json?                 @map("pending_repository_file_paths") @db.JsonB
+  graphStatus                String                @default("pending") @map("graph_status") @db.VarChar(32)
+  repository                 Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  userAccess                 UserBranchAccess[]
+  ingestions                 UserBranchIngestion[]
+  codeChunks                 CodeChunk[]
+  codeSymbols                CodeSymbol[]
+  codeRelationships          CodeRelationship[]
+  conversations              Conversation[]
 
   @@unique([repositoryId, branchName])
   @@index([status])
@@ -83,44 +86,50 @@ model UserBranchIngestion {
 }
 
 model CodeChunk {
-  id                 String                      @id @default(uuid()) @db.Uuid
-  branchIndexId      String                      @map("branch_index_id") @db.Uuid
-  filePath           String                      @map("file_path") @db.VarChar(1024)
-  content            String                      @db.Text
-  startLine          Int                         @map("start_line")
-  endLine            Int                         @map("end_line")
-  language           String                      @db.VarChar(64)
-  symbolName         String?                     @map("symbol_name") @db.VarChar(255)
-  symbolType         String?                     @map("symbol_type") @db.VarChar(32)
-  className          String?                     @map("class_name") @db.VarChar(255)
-  functionSignature  String?                     @map("function_signature") @db.Text
-  commitSha          String                      @map("commit_sha") @db.VarChar(40)
-  sourceBlobSha      String?                     @map("source_blob_sha") @db.VarChar(40)
-  embedding          Unsupported("vector(1024)")?
-  searchVector       Unsupported("tsvector")?    @map("search_vector")
-  embeddingStatus    String                      @default("pending") @map("embedding_status") @db.VarChar(32)
-  isActive           Boolean                     @default(false) @map("is_active")
-  ingestionAttempt   Int                         @default(0) @map("ingestion_attempt")
-  batchExecutionToken String?                    @map("batch_execution_token") @db.Uuid
-  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  branchIndex        BranchIndex                 @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
+  id                  String                       @id @default(uuid()) @db.Uuid
+  branchIndexId       String                       @map("branch_index_id") @db.Uuid
+  filePath            String                       @map("file_path") @db.VarChar(1024)
+  content             String                       @db.Text
+  startLine           Int                          @map("start_line")
+  endLine             Int                          @map("end_line")
+  language            String                       @db.VarChar(64)
+  symbolName          String?                      @map("symbol_name") @db.VarChar(255)
+  symbolType          String?                      @map("symbol_type") @db.VarChar(32)
+  className           String?                      @map("class_name") @db.VarChar(255)
+  functionSignature   String?                      @map("function_signature") @db.Text
+  commitSha           String                       @map("commit_sha") @db.VarChar(40)
+  sourceBlobSha       String?                      @map("source_blob_sha") @db.VarChar(40)
+  embedding           Unsupported("vector(1024)")?
+  searchVector        Unsupported("tsvector")?     @map("search_vector")
+  embeddingStatus     String                       @default("pending") @map("embedding_status") @db.VarChar(32)
+  isActive            Boolean                      @default(false) @map("is_active")
+  ingestionAttempt    Int                          @default(0) @map("ingestion_attempt")
+  batchExecutionToken String?                      @map("batch_execution_token") @db.Uuid
+  createdAt           DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  branchIndex         BranchIndex                  @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
 
   @@index([branchIndexId])
   @@index([branchIndexId, filePath])
   @@index([branchIndexId, isActive])
   @@index([branchIndexId, ingestionAttempt, embeddingStatus])
   @@index([branchIndexId, batchExecutionToken])
+  // Existing indexes from PostgreSQL keyword search migration
+  @@index([branchIndexId, className], map: "code_chunks_branch_class_name_idx")
+  @@index([branchIndexId, language], map: "code_chunks_branch_language_idx")
+  @@index([branchIndexId, symbolName], map: "code_chunks_branch_symbol_name_idx")
+  @@index([branchIndexId, symbolType], map: "code_chunks_branch_symbol_type_idx")
+  @@index([searchVector], type: Gin, map: "code_chunks_search_vector_idx")
   @@map("code_chunks")
 }
 
 model Conversation {
-  id            String    @id @default(uuid()) @db.Uuid
-  userId        String    @map("user_id") @db.Uuid
-  branchIndexId String    @map("branch_index_id") @db.Uuid
-  title         String    @db.VarChar(255)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  branchIndexId String      @map("branch_index_id") @db.Uuid
+  title         String      @db.VarChar(255)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   branchIndex   BranchIndex @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
   messages      Message[]
 
@@ -130,30 +139,90 @@ model Conversation {
 }
 
 model Message {
-  id             String             @id @default(uuid()) @db.Uuid
-  conversationId String             @map("conversation_id") @db.Uuid
-  role           String             @db.VarChar(16)
-  content        String             @db.Text
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  clientId       String?            @map("client_id") @db.Uuid
-  status         String             @default("completed") @db.VarChar(16)
-  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id             String            @id @default(uuid()) @db.Uuid
+  conversationId String            @map("conversation_id") @db.Uuid
+  role           String            @db.VarChar(16)
+  content        String            @db.Text
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  clientId       String?           @map("client_id") @db.Uuid
+  status         String            @default("completed") @db.VarChar(16)
+  conversation   Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   citations      MessageCitation[]
 
-  @@index([conversationId, createdAt])
   @@unique([conversationId, clientId])
+  @@index([conversationId, createdAt])
   @@map("messages")
 }
 
 model MessageCitation {
-  id        String   @id @default(uuid()) @db.Uuid
-  messageId String   @map("message_id") @db.Uuid
-  filePath  String   @map("file_path") @db.VarChar(1024)
-  startLine Int      @map("start_line")
-  endLine   Int      @map("end_line")
-  commitSha String   @map("commit_sha") @db.VarChar(40)
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid()) @db.Uuid
+  messageId String  @map("message_id") @db.Uuid
+  filePath  String  @map("file_path") @db.VarChar(1024)
+  startLine Int     @map("start_line")
+  endLine   Int     @map("end_line")
+  commitSha String  @map("commit_sha") @db.VarChar(40)
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
   @@map("message_citations")
+}
+
+model CodeSymbol {
+  id                String             @id @default(uuid()) @db.Uuid
+  branchIndexId     String             @map("branch_index_id") @db.Uuid
+  filePath          String             @map("file_path") @db.VarChar(1024)
+  name              String             @db.VarChar(255)
+  kind              String             @db.VarChar(64)
+  language          String             @db.VarChar(64)
+  startLine         Int                @map("start_line")
+  endLine           Int                @map("end_line")
+  startColumn       Int                @map("start_column")
+  endColumn         Int                @map("end_column")
+  containerName     String?            @map("container_name") @db.VarChar(255)
+  signature         String?            @db.Text
+  commitSha         String             @map("commit_sha") @db.VarChar(40)
+  ingestionAttempt  Int                @default(0) @map("ingestion_attempt")
+  isActive          Boolean            @default(false) @map("is_active")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  branchIndex       BranchIndex        @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
+  fromRelationships CodeRelationship[] @relation("FromSymbol")
+  toRelationships   CodeRelationship[] @relation("ToSymbol")
+
+  @@index([branchIndexId])
+  @@index([branchIndexId, isActive])
+  @@index([branchIndexId, ingestionAttempt])
+  @@index([branchIndexId, filePath])
+  @@index([branchIndexId, name])
+  @@map("code_symbols")
+}
+
+model CodeRelationship {
+  id               String      @id @default(uuid()) @db.Uuid
+  branchIndexId    String      @map("branch_index_id") @db.Uuid
+  fromSymbolId     String?     @map("from_symbol_id") @db.Uuid
+  toSymbolId       String?     @map("to_symbol_id") @db.Uuid
+  type             String      @db.VarChar(32)
+  filePath         String      @map("file_path") @db.VarChar(1024)
+  startLine        Int         @map("start_line")
+  endLine          Int         @map("end_line")
+  referenceName    String      @map("reference_name") @db.VarChar(255)
+  targetModule     String?     @map("target_module") @db.VarChar(1024)
+  isResolved       Boolean     @default(false) @map("is_resolved")
+  resolutionError  String?     @map("resolution_error") @db.VarChar(255)
+  metadata         Json?       @db.JsonB
+  commitSha        String      @map("commit_sha") @db.VarChar(40)
+  ingestionAttempt Int         @default(0) @map("ingestion_attempt")
+  isActive         Boolean     @default(false) @map("is_active")
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  branchIndex      BranchIndex @relation(fields: [branchIndexId], references: [id], onDelete: Cascade)
+  fromSymbol       CodeSymbol? @relation("FromSymbol", fields: [fromSymbolId], references: [id], onDelete: Cascade)
+  toSymbol         CodeSymbol? @relation("ToSymbol", fields: [toSymbolId], references: [id], onDelete: Cascade)
+
+  @@index([branchIndexId])
+  @@index([branchIndexId, isActive])
+  @@index([branchIndexId, ingestionAttempt])
+  @@index([fromSymbolId])
+  @@index([toSymbolId])
+  @@index([branchIndexId, type])
+  @@map("code_relationships")
 }

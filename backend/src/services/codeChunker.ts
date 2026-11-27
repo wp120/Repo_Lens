@@ -2,6 +2,18 @@ import { Parser, Language } from "web-tree-sitter";
 import { getWasmPath } from "tree-sitter-wasm";
 import { ingestionLimits } from "../config/ingestionLimits.js";
 import { estimateVoyageTokens } from "./tokenEstimator.js";
+import {
+  extractGraphFromAst,
+  isGraphExtractionSupported,
+  type ExtractedSymbol,
+  type ExtractedRelationshipCandidate,
+} from "./codeGraphExtractor.js";
+
+export interface FileParseResult {
+  chunks: CodeChunk[];
+  symbols: ExtractedSymbol[];
+  relationshipCandidates: ExtractedRelationshipCandidate[];
+}
 
 export interface CodeChunk {
   filePath: string;
@@ -155,20 +167,27 @@ export function detectLanguage(filePath: string): {
   return { language, grammar };
 }
 
-export async function chunkSourceFile(
+export async function parseSourceFileWithGraph(
   filePath: string,
   content: string,
   commitSha: string,
   config: ChunkerConfig = {},
-): Promise<CodeChunk[]> {
-  if (!content || !content.trim()) return [];
-  if (isBinaryContent(content)) return [];
+): Promise<FileParseResult> {
+  if (!content || !content.trim()) {
+    return { chunks: [], symbols: [], relationshipCandidates: [] };
+  }
+  if (isBinaryContent(content)) {
+    return { chunks: [], symbols: [], relationshipCandidates: [] };
+  }
 
   const maxChars = config.maxChunkChars ?? ingestionLimits.maxChunkChars;
   const maxTokens =
     config.maxTokensPerChunk ?? ingestionLimits.maxTokensPerChunk;
   const minChars = config.minChunkChars ?? ingestionLimits.minChunkChars;
   const { language, grammar } = detectLanguage(filePath);
+
+  let symbols: ExtractedSymbol[] = [];
+  let relationshipCandidates: ExtractedRelationshipCandidate[] = [];
 
   if (grammar) {
     const parserSetup = await getTreeSitterParser(grammar);
@@ -187,8 +206,24 @@ export async function chunkSourceFile(
             maxTokens,
             config.targetChunkChars ?? ingestionLimits.targetChunkChars,
           );
+
+          if (isGraphExtractionSupported(language)) {
+            const graphData = extractGraphFromAst(
+              tree.rootNode as unknown as AstNode,
+              content,
+              filePath,
+              language,
+            );
+            symbols = graphData.symbols;
+            relationshipCandidates = graphData.relationshipCandidates;
+          }
+
           if (chunks.length > 0) {
-            return deduplicateAndValidateChunks(chunks);
+            return {
+              chunks: deduplicateAndValidateChunks(chunks),
+              symbols,
+              relationshipCandidates,
+            };
           }
         }
       } catch {
@@ -207,7 +242,26 @@ export async function chunkSourceFile(
     config.chunkOverlapLines ?? ingestionLimits.chunkOverlapLines,
     maxTokens,
   );
-  return deduplicateAndValidateChunks(fallbackChunks);
+  return {
+    chunks: deduplicateAndValidateChunks(fallbackChunks),
+    symbols,
+    relationshipCandidates,
+  };
+}
+
+export async function chunkSourceFile(
+  filePath: string,
+  content: string,
+  commitSha: string,
+  config: ChunkerConfig = {},
+): Promise<CodeChunk[]> {
+  const result = await parseSourceFileWithGraph(
+    filePath,
+    content,
+    commitSha,
+    config,
+  );
+  return result.chunks;
 }
 
 interface AstNode {
@@ -274,8 +328,11 @@ function extractFunctionSignature(node: AstNode): string | null {
 
   const bodyIndex = firstLine.search(/\{\s*$/);
   const colonIndex = firstLine.endsWith(":") ? firstLine.length - 1 : -1;
-  const endIndex = bodyIndex >= 0 ? bodyIndex : colonIndex >= 0 ? colonIndex : -1;
-  const signature = (endIndex >= 0 ? firstLine.slice(0, endIndex) : firstLine).trim();
+  const endIndex =
+    bodyIndex >= 0 ? bodyIndex : colonIndex >= 0 ? colonIndex : -1;
+  const signature = (
+    endIndex >= 0 ? firstLine.slice(0, endIndex) : firstLine
+  ).trim();
   return signature || null;
 }
 
@@ -284,7 +341,8 @@ function extractClassOverview(
   containerNode: AstNode,
   bodyNode: AstNode,
 ): string {
-  const declaration = containerNode.text.split("\n")[0]?.trim() ?? containerName;
+  const declaration =
+    containerNode.text.split("\n")[0]?.trim() ?? containerName;
   const lines = [declaration];
   for (const member of bodyNode.children) {
     const name = extractSymbolName(member);
@@ -408,9 +466,15 @@ function chunkWithTreeSitter(
         endLine: node.endPosition.row + 1,
         language,
         symbolName: extractSymbolName(targetNode),
-        symbolType: isContainer ? "class" : isFunction ? "function" : "statement",
+        symbolType: isContainer
+          ? "class"
+          : isFunction
+            ? "function"
+            : "statement",
         className: isContainer ? extractSymbolName(targetNode) : null,
-        functionSignature: isFunction ? extractFunctionSignature(targetNode) : null,
+        functionSignature: isFunction
+          ? extractFunctionSignature(targetNode)
+          : null,
         commitSha,
       });
       return;
@@ -490,7 +554,12 @@ function chunkWithTreeSitter(
       });
     }
   }
-  const merged = mergeTrailingSmallUnits(validatedChunks, minChars, maxChars, maxTokens);
+  const merged = mergeTrailingSmallUnits(
+    validatedChunks,
+    minChars,
+    maxChars,
+    maxTokens,
+  );
   return merged;
 }
 
@@ -517,11 +586,12 @@ function chunkOversizedContainer(
   // Add a small source-grounded structural overview for oversized containers.
   const headerStartLine = containerNode.startPosition.row + 1;
   const headerEndLine = bodyNode.startPosition.row + 1;
-  const overviewText = extractClassOverview(containerName, containerNode, bodyNode);
-  if (
-    overviewText &&
-    nodeFitsBudgets(overviewText, maxChars, maxTokens)
-  ) {
+  const overviewText = extractClassOverview(
+    containerName,
+    containerNode,
+    bodyNode,
+  );
+  if (overviewText && nodeFitsBudgets(overviewText, maxChars, maxTokens)) {
     outputChunks.push({
       filePath,
       content: overviewText,
@@ -817,8 +887,7 @@ function sourceTextForNodes(nodes: AstNode[], sourceCode: string): string {
   if (nodes.length === 0) return "";
   const lines = sourceCode.split("\n");
   const startLine = nodes[0].startPosition.row;
-  const endLine =
-    nodes[nodes.length - 1].endPosition.row + 1;
+  const endLine = nodes[nodes.length - 1].endPosition.row + 1;
   return lines.slice(startLine, endLine).join("\n").trim();
 }
 
@@ -909,10 +978,7 @@ function chunkStatementsAtBudgets(
     }
 
     const candidate = sourceTextForNodes([...group, statement], sourceCode);
-    if (
-      group.length > 0 &&
-      !nodeFitsBudgets(candidate, maxChars, maxTokens)
-    ) {
+    if (group.length > 0 && !nodeFitsBudgets(candidate, maxChars, maxTokens)) {
       flush();
     }
     group.push(statement);
@@ -958,11 +1024,7 @@ function splitOversizedText(
     parts.push({
       content: partText,
       startLine: baseLine + prefix.split("\n").length - 1,
-      endLine:
-        baseLine +
-        prefix.split("\n").length -
-        1 +
-        partPrefixLines,
+      endLine: baseLine + prefix.split("\n").length - 1 + partPrefixLines,
     });
     offset = end;
   }
@@ -1071,7 +1133,8 @@ function mergeTrailingSmallUnits(
     last.content.length >= softMinimum ||
     preceding.symbolName !== null ||
     last.symbolName !== null ||
-    !last.filePath || !preceding.filePath
+    !last.filePath ||
+    !preceding.filePath
   ) {
     return chunks;
   }

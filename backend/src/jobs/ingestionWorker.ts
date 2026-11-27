@@ -15,8 +15,10 @@ import {
 } from "../services/githubRepository.js";
 import {
   chunkSourceFile,
+  parseSourceFileWithGraph,
   type CodeChunk,
   type ChunkerConfig,
+  type FileParseResult,
 } from "../services/codeChunker.js";
 import { generateVoyageEmbeddings } from "../services/voyageEmbedding.js";
 import { buildChunkEmbeddingText } from "../services/embeddingContext.js";
@@ -26,6 +28,16 @@ import {
   type CodeChunkStore,
   type StorableCodeChunk,
 } from "../services/codeChunkStore.js";
+import {
+  prismaCodeGraphStore,
+  type CodeGraphStore,
+  type StorableSymbol,
+  type StorableRelationship,
+} from "../services/codeGraphStore.js";
+import {
+  resolveGraphRelationships,
+  type GraphResolutionResult,
+} from "../services/codeGraphResolver.js";
 import type { IngestionJob } from "./ingestionQueue.js";
 import {
   enqueueChunkEmbeddings,
@@ -35,6 +47,7 @@ import {
 export interface IngestionWorkerDependencies {
   prisma: typeof defaultPrisma;
   chunkStore: CodeChunkStore;
+  graphStore?: CodeGraphStore;
   enqueueBatchEmbeddings?: (job: ChunkEmbeddingJob) => Promise<void>;
   resolveCommit: (
     owner: string,
@@ -58,7 +71,18 @@ export interface IngestionWorkerDependencies {
     commitSha: string,
     config?: ChunkerConfig,
   ) => Promise<CodeChunk[]>;
+  fileParser?: (
+    filePath: string,
+    content: string,
+    commitSha: string,
+    config?: ChunkerConfig,
+  ) => Promise<FileParseResult>;
   embedder: (texts: string[]) => Promise<number[][]>;
+  graphResolver?: (
+    repositoryFilePaths: string[],
+    symbols: StorableSymbol[],
+    relationships: StorableRelationship[],
+  ) => Promise<GraphResolutionResult>;
 }
 
 export async function resolveBranchCommit(
@@ -110,6 +134,7 @@ function stagedChunkId(
 export const defaultWorkerDependencies: IngestionWorkerDependencies = {
   prisma: defaultPrisma,
   chunkStore: prismaCodeChunkStore,
+  graphStore: prismaCodeGraphStore,
   enqueueBatchEmbeddings: (job) => enqueueChunkEmbeddings(job),
   resolveCommit: (owner, repo, branch) =>
     resolveBranchCommit(owner, repo, branch),
@@ -119,7 +144,11 @@ export const defaultWorkerDependencies: IngestionWorkerDependencies = {
     fetchBlobContent(owner, repo, blobSha),
   chunker: (path, content, sha, cfg) =>
     chunkSourceFile(path, content, sha, cfg),
+  fileParser: (path, content, sha, cfg) =>
+    parseSourceFileWithGraph(path, content, sha, cfg),
   embedder: (texts) => generateVoyageEmbeddings(texts),
+  graphResolver: (paths, syms, rels) =>
+    resolveGraphRelationships(paths, syms, rels),
 };
 
 export async function processIngestionJob(
@@ -162,6 +191,7 @@ export async function processIngestionJob(
     },
     data: {
       status: "ingesting",
+      graphStatus: "pending",
       lastError: null,
       processingToken,
     },
@@ -222,13 +252,105 @@ export async function processIngestionJob(
         file.sha,
       );
 
-      const chunks = await deps.chunker(file.path, content, commitSha, {
-        maxChunkChars: ingestionLimits.maxChunkChars,
-        minChunkChars: ingestionLimits.minChunkChars,
-        targetChunkChars: ingestionLimits.targetChunkChars,
-        maxTokensPerChunk: ingestionLimits.maxTokensPerChunk,
-        chunkOverlapLines: ingestionLimits.chunkOverlapLines,
-      });
+      let chunks: CodeChunk[] = [];
+      if (deps.fileParser) {
+        const parseResult = await deps.fileParser(
+          file.path,
+          content,
+          commitSha,
+          {
+            maxChunkChars: ingestionLimits.maxChunkChars,
+            minChunkChars: ingestionLimits.minChunkChars,
+            targetChunkChars: ingestionLimits.targetChunkChars,
+            maxTokensPerChunk: ingestionLimits.maxTokensPerChunk,
+            chunkOverlapLines: ingestionLimits.chunkOverlapLines,
+          },
+        );
+        chunks = parseResult.chunks;
+
+        if (deps.graphStore) {
+          const fileSymbols: StorableSymbol[] = parseResult.symbols.map(
+            (s) => ({
+              id: randomUUID(),
+              branchIndexId: branchIndex.id,
+              filePath: s.filePath,
+              name: s.name,
+              kind: s.kind,
+              language: s.language,
+              startLine: s.startLine,
+              endLine: s.endLine,
+              startColumn: s.startColumn,
+              endColumn: s.endColumn,
+              containerName: s.containerName ?? null,
+              signature: s.signature ?? null,
+              commitSha,
+              ingestionAttempt: jobData.attempt,
+              isActive: false,
+            }),
+          );
+
+          const fileRelationships: StorableRelationship[] =
+            parseResult.relationshipCandidates.map((c) => {
+              let fromSymbolId: string | null = null;
+              if (c.fromSymbolName) {
+                const matched = fileSymbols.find(
+                  (s) =>
+                    s.name === c.fromSymbolName &&
+                    (!c.fromContainerName ||
+                      s.containerName === c.fromContainerName) &&
+                    (!c.fromSymbolStartLine ||
+                      s.startLine === c.fromSymbolStartLine),
+                );
+                if (matched) {
+                  fromSymbolId = matched.id;
+                }
+              }
+              return {
+                id: randomUUID(),
+                branchIndexId: branchIndex.id,
+                fromSymbolId,
+                toSymbolId: null,
+                type: c.type,
+                filePath: c.filePath,
+                startLine: c.startLine,
+                endLine: c.endLine,
+                referenceName: c.referenceName,
+                targetModule: c.targetModule ?? null,
+                isResolved: false,
+                resolutionError: null,
+                metadata: c.metadata ?? null,
+                commitSha,
+                ingestionAttempt: jobData.attempt,
+                isActive: false,
+              };
+            });
+
+          if (fileSymbols.length > 0) {
+            await deps.graphStore.stageSymbols(
+              branchIndex.id,
+              jobData.attempt,
+              processingToken,
+              fileSymbols,
+            );
+          }
+          if (fileRelationships.length > 0) {
+            await deps.graphStore.stageRelationships(
+              branchIndex.id,
+              jobData.attempt,
+              processingToken,
+              fileRelationships,
+            );
+          }
+        }
+      } else {
+        chunks = await deps.chunker(file.path, content, commitSha, {
+          maxChunkChars: ingestionLimits.maxChunkChars,
+          minChunkChars: ingestionLimits.minChunkChars,
+          targetChunkChars: ingestionLimits.targetChunkChars,
+          maxTokensPerChunk: ingestionLimits.maxTokensPerChunk,
+          chunkOverlapLines: ingestionLimits.chunkOverlapLines,
+        });
+      }
 
       for (const chunk of chunks) {
         allChunks.push({
@@ -262,6 +384,36 @@ export async function processIngestionJob(
       });
 
       if (allChunks.length === 0) {
+        if (deps.graphStore && deps.graphResolver) {
+          const stagedGraph = await deps.graphStore.loadStagedGraph(
+            branchIndex.id,
+            jobData.attempt,
+            processingToken,
+          );
+          const resolutionResult = await deps.graphResolver(
+            inventory.repositoryFilePaths,
+            stagedGraph.symbols,
+            stagedGraph.relationships,
+          );
+          await deps.graphStore.persistResolvedRelationships(
+            branchIndex.id,
+            jobData.attempt,
+            processingToken,
+            resolutionResult.updates,
+          );
+          await deps.graphStore.markGraphCompleted(
+            branchIndex.id,
+            jobData.attempt,
+            processingToken,
+          );
+        } else if (deps.graphStore?.markGraphCompleted) {
+          await deps.graphStore.markGraphCompleted(
+            branchIndex.id,
+            jobData.attempt,
+            processingToken,
+          );
+        }
+
         if (!deps.chunkStore.finalizeIngestion) {
           throw new Error("Ingestion finalization is not configured.");
         }
@@ -271,35 +423,77 @@ export async function processIngestionJob(
           processingToken,
           commitSha,
         );
-      } else {
-        for (
-          let start = 0;
-          start < allChunks.length;
-          start += ingestionLimits.embeddingBatchSize
-        ) {
-          const batch = allChunks.slice(
-            start,
-            start + ingestionLimits.embeddingBatchSize,
-          );
-          const chunkIds = batch.map((chunk) => {
-            if (!chunk.id) {
-              throw new Error("Staged chunk is missing its database ID.");
-            }
-            return chunk.id;
-          });
+        return;
+      }
 
-          await deps.enqueueBatchEmbeddings({
-            branchIndexId: branchIndex.id,
-            ingestionAttempt: jobData.attempt,
+      for (
+        let start = 0;
+        start < allChunks.length;
+        start += ingestionLimits.embeddingBatchSize
+      ) {
+        const batch = allChunks.slice(
+          start,
+          start + ingestionLimits.embeddingBatchSize,
+        );
+        const chunkIds = batch.map((chunk) => {
+          if (!chunk.id) {
+            throw new Error("Staged chunk is missing its database ID.");
+          }
+          return chunk.id;
+        });
+
+        await deps.enqueueBatchEmbeddings({
+          branchIndexId: branchIndex.id,
+          ingestionAttempt: jobData.attempt,
+          processingToken,
+          commitSha,
+          chunkIds,
+        });
+        console.info("Enqueued chunk embedding batch", {
+          branchIndexId: branchIndex.id,
+          ingestionAttempt: jobData.attempt,
+          chunkCount: chunkIds.length,
+        });
+      }
+
+      // Resolve staged graph relationships
+      if (deps.graphStore && deps.graphResolver) {
+        const stagedGraph = await deps.graphStore.loadStagedGraph(
+          branchIndex.id,
+          jobData.attempt,
+          processingToken,
+        );
+        const resolutionResult = await deps.graphResolver(
+          inventory.repositoryFilePaths,
+          stagedGraph.symbols,
+          stagedGraph.relationships,
+        );
+        await deps.graphStore.persistResolvedRelationships(
+          branchIndex.id,
+          jobData.attempt,
+          processingToken,
+          resolutionResult.updates,
+        );
+        await deps.graphStore.markGraphCompleted(
+          branchIndex.id,
+          jobData.attempt,
+          processingToken,
+        );
+        console.info("Resolved code graph relationships", {
+          branchIndexId: branchIndex.id,
+          ingestionAttempt: jobData.attempt,
+          symbolsCount: stagedGraph.symbols.length,
+          resolvedRelationships: resolutionResult.resolvedCount,
+          unresolvedRelationships: resolutionResult.unresolvedCount,
+        });
+
+        if (deps.chunkStore.finalizeIngestion) {
+          await deps.chunkStore.finalizeIngestion(
+            branchIndex.id,
+            jobData.attempt,
             processingToken,
             commitSha,
-            chunkIds,
-          });
-          console.info("Enqueued chunk embedding batch", {
-            branchIndexId: branchIndex.id,
-            ingestionAttempt: jobData.attempt,
-            chunkCount: chunkIds.length,
-          });
+          );
         }
       }
       return;
@@ -333,6 +527,31 @@ export async function processIngestionJob(
       commitSha,
     );
 
+    // Resolve staged graph relationships
+    if (deps.graphStore && deps.graphResolver) {
+      const stagedGraph = await deps.graphStore.loadStagedGraph(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+      );
+      const resolutionResult = await deps.graphResolver(
+        inventory.repositoryFilePaths,
+        stagedGraph.symbols,
+        stagedGraph.relationships,
+      );
+      await deps.graphStore.persistResolvedRelationships(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+        resolutionResult.updates,
+      );
+      await deps.graphStore.markGraphCompleted(
+        branchIndex.id,
+        jobData.attempt,
+        processingToken,
+      );
+    }
+
     const readyTransition = await deps.prisma.branchIndex.updateMany({
       where: {
         id: branchIndex.id,
@@ -342,6 +561,7 @@ export async function processIngestionJob(
       },
       data: {
         status: "ready",
+        graphStatus: "completed",
         lastError: null,
         processingToken: null,
       },

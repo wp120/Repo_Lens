@@ -8,18 +8,21 @@ import {
 } from "../services/codeChunkStore.js";
 
 test("stages each batch in its own owned transaction and resumes idempotently", async () => {
-  const chunks: StorableCodeChunk[] = Array.from({ length: 101 }, (_, index) => ({
-    id: `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
-    branchIndexId: "branch-index-id",
-    filePath: `src/file-${index}.ts`,
-    content: `chunk-${index}`,
-    startLine: index + 1,
-    endLine: index + 1,
-    language: "typescript",
-    symbolName: `symbol${index}`,
-    commitSha: "0123456789abcdef0123456789abcdef01234567",
-    embedding: [],
-  }));
+  const chunks: StorableCodeChunk[] = Array.from(
+    { length: 101 },
+    (_, index) => ({
+      id: `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+      branchIndexId: "branch-index-id",
+      filePath: `src/file-${index}.ts`,
+      content: `chunk-${index}`,
+      startLine: index + 1,
+      endLine: index + 1,
+      language: "typescript",
+      symbolName: `symbol${index}`,
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      embedding: [],
+    }),
+  );
   const storedIds = new Set<string>();
   const ownershipChecks: unknown[][] = [];
   const committedBatchSizes: number[] = [];
@@ -199,25 +202,27 @@ test("claiming chunks does not deserialize unsupported tsvector columns", async 
             return [{ id: "branch-index-id" }] as never;
           }
           claimQuery = query;
-          return [{
-            id: "00000000-0000-4000-8000-000000000001",
-            branchIndexId: "branch-index-id",
-            filePath: "src/file.ts",
-            content: "content",
-            startLine: 1,
-            endLine: 1,
-            language: "typescript",
-            symbolName: "symbol",
-            symbolType: null,
-            className: null,
-            functionSignature: null,
-            commitSha: "0123456789abcdef0123456789abcdef01234567",
-            sourceBlobSha: null,
-            embeddingStatus: "processing",
-            isActive: false,
-            ingestionAttempt: 7,
-            batchExecutionToken: "batch-token",
-          }] as never;
+          return [
+            {
+              id: "00000000-0000-4000-8000-000000000001",
+              branchIndexId: "branch-index-id",
+              filePath: "src/file.ts",
+              content: "content",
+              startLine: 1,
+              endLine: 1,
+              language: "typescript",
+              symbolName: "symbol",
+              symbolType: null,
+              className: null,
+              functionSignature: null,
+              commitSha: "0123456789abcdef0123456789abcdef01234567",
+              sourceBlobSha: null,
+              embeddingStatus: "processing",
+              isActive: false,
+              ingestionAttempt: 7,
+              batchExecutionToken: "batch-token",
+            },
+          ] as never;
         },
         $executeRawUnsafe: async () => 1,
       }),
@@ -265,10 +270,12 @@ test("finalization publishes the staged repository structure in the chunk transa
       callback({
         $queryRawUnsafe: async (query) => {
           if (query.includes("has_pending_repository_file_paths")) {
-            return [{
-              id: "branch-index-id",
-              has_pending_repository_file_paths: true,
-            }] as never;
+            return [
+              {
+                id: "branch-index-id",
+                has_pending_repository_file_paths: true,
+              },
+            ] as never;
           }
           return [{ count: 0 }] as never;
         },
@@ -299,6 +306,53 @@ test("finalization publishes the staged repository structure in the chunk transa
       "processing-token",
       "0123456789abcdef0123456789abcdef01234567",
     ]);
+
+    // Old inactive rows from prior ingestion attempts must be cleaned up after
+    // the new snapshot is activated.
+    const deleteRelationships = statements.find(
+      ({ query }) =>
+        /DELETE FROM code_relationships/.test(query) &&
+        /is_active = false/.test(query) &&
+        !query.includes("ingestion_attempt"),
+    );
+    assert.ok(
+      deleteRelationships,
+      "finalizeIngestion must delete old inactive code_relationships",
+    );
+
+    const deleteSymbols = statements.find(
+      ({ query }) =>
+        /DELETE FROM code_symbols/.test(query) &&
+        /is_active = false/.test(query) &&
+        !query.includes("ingestion_attempt"),
+    );
+    assert.ok(
+      deleteSymbols,
+      "finalizeIngestion must delete old inactive code_symbols",
+    );
+
+    const deleteChunks = statements.find(
+      ({ query }) =>
+        /DELETE FROM code_chunks/.test(query) &&
+        /is_active = false/.test(query),
+    );
+    assert.ok(
+      deleteChunks,
+      "finalizeIngestion must delete old inactive code_chunks",
+    );
+
+    // FK order: relationships must be deleted before symbols.
+    const relIdx = statements.indexOf(deleteRelationships!);
+    const symIdx = statements.indexOf(deleteSymbols!);
+    const chunkIdx = statements.indexOf(deleteChunks!);
+    assert.ok(
+      relIdx < symIdx,
+      "code_relationships must be deleted before code_symbols (FK order)",
+    );
+    assert.ok(
+      symIdx < chunkIdx,
+      "code_symbols must be deleted before code_chunks (FK order)",
+    );
   } finally {
     if (originalDescriptor) {
       Object.defineProperty(prisma, "$transaction", originalDescriptor);
@@ -331,7 +385,10 @@ test("repository paths are staged only for the current ingestion owner", async (
       filePaths,
     );
 
-    assert.match(statements[0].query, /pending_repository_file_paths = \$4::jsonb/);
+    assert.match(
+      statements[0].query,
+      /pending_repository_file_paths = \$4::jsonb/,
+    );
     assert.match(statements[0].query, /processing_token = \$3::uuid/);
     assert.deepEqual(statements[0].values, [
       "branch-index-id",
@@ -382,10 +439,12 @@ test("finalization leaves the published structure untouched while chunks are inc
       callback({
         $queryRawUnsafe: async (query) =>
           query.includes("has_pending_repository_file_paths")
-            ? ([{
-                id: "branch-index-id",
-                has_pending_repository_file_paths: true,
-              }] as never)
+            ? ([
+                {
+                  id: "branch-index-id",
+                  has_pending_repository_file_paths: true,
+                },
+              ] as never)
             : ([{ count: 1 }] as never),
         $executeRawUnsafe: async (query) => {
           statements.push(query);

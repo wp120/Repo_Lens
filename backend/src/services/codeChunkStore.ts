@@ -248,6 +248,14 @@ export const prismaCodeChunkStore: CodeChunkStore = {
         throw new IngestionOwnershipLostError();
       }
       await tx.$executeRawUnsafe(
+        "DELETE FROM code_relationships WHERE branch_index_id = $1::uuid",
+        branchIndexId,
+      );
+      await tx.$executeRawUnsafe(
+        "DELETE FROM code_symbols WHERE branch_index_id = $1::uuid",
+        branchIndexId,
+      );
+      await tx.$executeRawUnsafe(
         "DELETE FROM code_chunks WHERE branch_index_id = $1::uuid",
         branchIndexId,
       );
@@ -406,10 +414,10 @@ export const prismaCodeChunkStore: CodeChunkStore = {
            is_active AS "isActive",
            ingestion_attempt AS "ingestionAttempt",
            batch_execution_token AS "batchExecutionToken"`,
-         branchIndexId,
-         ingestionAttempt,
-         batchExecutionToken,
-         chunkIds,
+        branchIndexId,
+        ingestionAttempt,
+        batchExecutionToken,
+        chunkIds,
       );
       return claimed.map((chunk) => ({
         ...chunk,
@@ -520,10 +528,15 @@ export const prismaCodeChunkStore: CodeChunkStore = {
   ): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
       const owner = await tx.$queryRawUnsafe<
-        Array<{ id: string; has_pending_repository_file_paths: boolean }>
+        Array<{
+          id: string;
+          has_pending_repository_file_paths: boolean;
+          graph_status?: string;
+        }>
       >(
         `SELECT id,
-                pending_repository_file_paths IS NOT NULL AS has_pending_repository_file_paths
+                pending_repository_file_paths IS NOT NULL AS has_pending_repository_file_paths,
+                graph_status
          FROM branch_indexes
          WHERE id = $1::uuid
            AND ingestion_attempt = $2
@@ -540,7 +553,17 @@ export const prismaCodeChunkStore: CodeChunkStore = {
         throw new Error("Staged repository structure is missing.");
       }
 
-      const incomplete = await tx.$queryRawUnsafe<Array<{ count: string | number | bigint }>>(
+      // Finalization requires graph construction to be completed
+      if (
+        owner[0].graph_status !== undefined &&
+        owner[0].graph_status !== "completed"
+      ) {
+        return false;
+      }
+
+      const incomplete = await tx.$queryRawUnsafe<
+        Array<{ count: string | number | bigint }>
+      >(
         `SELECT count(*)::int AS count
          FROM code_chunks
          WHERE branch_index_id = $1::uuid
@@ -577,9 +600,65 @@ export const prismaCodeChunkStore: CodeChunkStore = {
       );
 
       await tx.$executeRawUnsafe(
+        "UPDATE code_symbols SET is_active = false WHERE branch_index_id = $1::uuid AND is_active = true",
+        branchIndexId,
+      );
+
+      await tx.$executeRawUnsafe(
+        `UPDATE code_symbols
+         SET is_active = true
+         WHERE branch_index_id = $1::uuid
+           AND ingestion_attempt = $2
+           AND commit_sha = $3`,
+        branchIndexId,
+        ingestionAttempt,
+        commitSha,
+      );
+
+      await tx.$executeRawUnsafe(
+        "UPDATE code_relationships SET is_active = false WHERE branch_index_id = $1::uuid AND is_active = true",
+        branchIndexId,
+      );
+
+      await tx.$executeRawUnsafe(
+        `UPDATE code_relationships
+         SET is_active = true
+         WHERE branch_index_id = $1::uuid
+           AND ingestion_attempt = $2
+           AND commit_sha = $3`,
+        branchIndexId,
+        ingestionAttempt,
+        commitSha,
+      );
+
+      await tx.$executeRawUnsafe(
         `DELETE FROM code_chunks
          WHERE branch_index_id = $1::uuid
            AND embedding_status = 'pending'`,
+        branchIndexId,
+      );
+
+      // Delete all rows from prior ingestion attempts that are now superseded
+      // (is_active = false after the activation step above). FK order: relationships
+      // reference symbols which reference chunks, so delete in reverse dependency order.
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_relationships
+         WHERE branch_index_id = $1::uuid
+           AND is_active = false`,
+        branchIndexId,
+      );
+
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_symbols
+         WHERE branch_index_id = $1::uuid
+           AND is_active = false`,
+        branchIndexId,
+      );
+
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_chunks
+         WHERE branch_index_id = $1::uuid
+           AND is_active = false`,
         branchIndexId,
       );
 
@@ -631,6 +710,7 @@ export const prismaCodeChunkStore: CodeChunkStore = {
       const transitioned = await tx.$executeRawUnsafe(
         `UPDATE branch_indexes
          SET status = 'failed',
+             graph_status = 'failed',
              last_error = $4,
              processing_token = NULL,
              pending_repository_file_paths = NULL,
@@ -650,6 +730,24 @@ export const prismaCodeChunkStore: CodeChunkStore = {
 
       await tx.$executeRawUnsafe(
         `DELETE FROM code_chunks
+         WHERE branch_index_id = $1::uuid
+           AND ingestion_attempt = $2
+           AND is_active = false`,
+        branchIndexId,
+        ingestionAttempt,
+      );
+
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_relationships
+         WHERE branch_index_id = $1::uuid
+           AND ingestion_attempt = $2
+           AND is_active = false`,
+        branchIndexId,
+        ingestionAttempt,
+      );
+
+      await tx.$executeRawUnsafe(
+        `DELETE FROM code_symbols
          WHERE branch_index_id = $1::uuid
            AND ingestion_attempt = $2
            AND is_active = false`,

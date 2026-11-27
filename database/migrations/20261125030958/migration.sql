@@ -1,0 +1,4 @@
+-- No schema changes required.
+-- The five indexes are already created by the earlier
+-- postgres_keyword_search migration and are represented in schema.prisma.
+-- search_vector is a PostgreSQL generated column and must not be altered here.
