@@ -69,7 +69,7 @@ a {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg);
@@ -293,6 +293,7 @@ a {
   display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -300,7 +301,9 @@ a {
   display: flex;
   width: 276px;
   min-width: 276px;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid var(--line);
   background: #14161b;
 }
@@ -379,8 +382,10 @@ a {
 .repository-nav {
   min-height: 0;
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
   padding: 2px 8px 12px;
+  scrollbar-color: #3a3f49 transparent;
+  scrollbar-width: thin;
 }
 
 .repository-group {
@@ -537,9 +542,17 @@ a {
   font-size: 11px;
 }
 
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .conversation-link {
   display: flex;
+  min-width: 0;
   min-height: 30px;
+  flex: 1;
   align-items: center;
   gap: 8px;
   margin: 1px 0;
@@ -571,6 +584,33 @@ a {
 
 .conversation-active svg {
   color: var(--accent);
+}
+
+.conversation-action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #858b98;
+  cursor: pointer;
+}
+
+.conversation-action svg {
+  width: 12px;
+  height: 12px;
+}
+
+.conversation-action:hover {
+  background: #2a2d35;
+  color: #f0f1f4;
+}
+
+.conversation-action-delete:hover {
+  color: var(--red);
 }
 
 .new-conversation-button {
@@ -854,10 +894,26 @@ a {
 
 .messages-scroll {
   width: min(820px, 100%);
+  min-height: 0;
   flex: 1;
   align-self: center;
   overflow-y: auto;
   padding: 34px 38px 12px;
+  scrollbar-color: #3a3f49 transparent;
+  scrollbar-width: thin;
+}
+
+.messages-scroll::-webkit-scrollbar,
+.repository-nav::-webkit-scrollbar {
+  width: 8px;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb,
+.repository-nav::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #3a3f49;
+  background-clip: padding-box;
 }
 
 .conversation-title {

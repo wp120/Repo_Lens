@@ -7,6 +7,7 @@ export type IconName =
   | "chevron"
   | "close"
   | "code"
+  | "edit"
   | "external"
   | "github"
   | "menu"
@@ -37,6 +38,7 @@ export function Icon({
     chevron: <path d="m8 10 4 4 4-4" />,
     close: <path d="m6 6 12 12M18 6 6 18" />,
     code: <path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-12-2 14" />,
+    edit: <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z" />,
     external: (
       <>
         <path d="M14 4h6v6m-11 3L20 4" />

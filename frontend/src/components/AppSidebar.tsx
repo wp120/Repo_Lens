@@ -186,19 +186,34 @@ export function AppSidebar({
                     )}
                     {branch.conversations.map((conversation) => (
                       <div className="conversation-row" key={conversation.id}>
-                      <NavLink
-                        className={({ isActive }) =>
-                          `conversation-link ${isActive ? "conversation-active" : ""}`
-                        }
-                        key={conversation.id}
-                        onClick={onClose}
-                        to={`/dashboard/${branch.id}/${conversation.id}`}
-                      >
-                        <Icon name="message" />
-                        <span>{conversation.title}</span>
-                      </NavLink>
-                        <button aria-label={`Rename ${conversation.title}`} className="conversation-action" onClick={() => void renameConversation(conversation.id, conversation.title)} type="button">Edit</button>
-                        <button aria-label={`Delete ${conversation.title}`} className="conversation-action" onClick={() => void deleteConversation(branch, conversation.id)} type="button">×</button>
+                        <NavLink
+                          className={({ isActive }) =>
+                            `conversation-link ${isActive ? "conversation-active" : ""}`
+                          }
+                          onClick={onClose}
+                          to={`/dashboard/${branch.id}/${conversation.id}`}
+                        >
+                          <Icon name="message" />
+                          <span>{conversation.title}</span>
+                        </NavLink>
+                        <button
+                          aria-label={`Rename ${conversation.title}`}
+                          className="conversation-action"
+                          onClick={() => void renameConversation(conversation.id, conversation.title)}
+                          title={`Rename ${conversation.title}`}
+                          type="button"
+                        >
+                          <Icon name="edit" />
+                        </button>
+                        <button
+                          aria-label={`Delete ${conversation.title}`}
+                          className="conversation-action conversation-action-delete"
+                          onClick={() => void deleteConversation(branch, conversation.id)}
+                          title={`Delete ${conversation.title}`}
+                          type="button"
+                        >
+                          <Icon name="trash" />
+                        </button>
                       </div>
                     ))}
                     <button
