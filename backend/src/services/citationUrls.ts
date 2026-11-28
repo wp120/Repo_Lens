@@ -12,8 +12,6 @@ export function buildCitationUrl(
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   const anchor =
-    startLine === endLine
-      ? `#L${startLine}`
-      : `#L${startLine}-L${endLine}`;
-  return `${repositoryUrl.replace(/\/$/, "")}/blob/${commitSha}/${encodedPath}${anchor}`;
+    startLine === endLine ? `#L${startLine}` : `#L${startLine}-L${endLine}`;
+  return `${repositoryUrl.replace(/\/$/, "")}/blob/${commitSha}/${encodedPath}?plain=1${anchor}`;
 }
