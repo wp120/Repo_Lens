@@ -3,6 +3,7 @@ import { buildCitationUrl } from "./citationUrls.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
 import { retrieveRelevantChunks, searchCode } from "./retrieval.js";
 import { lookupRepositoryStructure } from "./repositoryStructure.js";
+import { lookupCodeRelationships } from "./codeGraphLookup.js";
 
 export interface ConversationCitation {
   filePath: string;
@@ -208,6 +209,7 @@ export async function sendConversationMessage(
     const retrieval = await retrieveAgentEvidence(
       content,
       conversation.branchIndexId,
+      userId,
     );
     const answer = await generateAnswer(
       content,
@@ -281,7 +283,11 @@ async function requireOwnedConversation(
   }
 }
 
-async function retrieveAgentEvidence(question: string, branchIndexId: string) {
+async function retrieveAgentEvidence(
+  question: string,
+  branchIndexId: string,
+  userId?: string,
+) {
   const apiKey = process.env.AI_API_KEY?.trim();
   const model = process.env.AI_CHAT_MODEL?.trim();
   if (!apiKey || !model) {
@@ -302,6 +308,8 @@ async function retrieveAgentEvidence(question: string, branchIndexId: string) {
       vectorSearch: retrieveRelevantChunks,
       keywordSearch: searchCode,
       repositoryStructureLookup: lookupRepositoryStructure,
+      codeRelationshipLookup: (authorizedBranchId, query) =>
+        lookupCodeRelationships(authorizedBranchId, query, { userId }),
     },
   );
 }

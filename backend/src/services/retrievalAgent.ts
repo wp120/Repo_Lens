@@ -1,6 +1,7 @@
 import { Agent, OpenAIProvider, run, tool } from "@openai/agents";
 import { z } from "zod";
 import type { RetrievedChunk } from "./conversationFlow.js";
+import type { CodeGraphLookupQuery } from "./codeGraphLookup.js";
 import type { CodeSearchFilters, CodeSearchMode } from "./retrieval.js";
 
 export interface RetrievalBudget {
@@ -10,9 +11,12 @@ export interface RetrievalBudget {
   maxContextTokens: number;
   maxAgentTurns: number;
   maxKeywordSearchCalls: number;
+  maxGraphLookupCalls: number;
 }
 
-export interface RetrievalOutcome<TChunk extends RetrievedChunk = RetrievedChunk> {
+export interface RetrievalOutcome<
+  TChunk extends RetrievedChunk = RetrievedChunk,
+> {
   status: "sufficient" | "insufficient";
   chunks: TChunk[];
   searchCalls: number;
@@ -28,20 +32,29 @@ export interface RetrievalAgentConfig {
 interface RetrievalRunState<TChunk extends RetrievedChunk> {
   calls: number;
   keywordCalls: number;
+  graphCalls: number;
   chunks: TChunk[];
   chunkIds: Set<string>;
   contextTokens: number;
 }
 
-export type SearchCodeFunction<TChunk extends RetrievedChunk = RetrievedChunk> = (
-  branchIndexId: string,
-  query: string,
-  mode: CodeSearchMode,
-  filters: CodeSearchFilters,
-  limit: number,
-) => Promise<TChunk[]>;
+export type SearchCodeFunction<TChunk extends RetrievedChunk = RetrievedChunk> =
+  (
+    branchIndexId: string,
+    query: string,
+    mode: CodeSearchMode,
+    filters: CodeSearchFilters,
+    limit: number,
+  ) => Promise<TChunk[]>;
 
-export interface RetrievalDependencies<TChunk extends RetrievedChunk = RetrievedChunk> {
+export type CodeRelationshipLookupFunction = (
+  branchIndexId: string,
+  query: CodeGraphLookupQuery,
+) => Promise<Record<string, unknown>>;
+
+export interface RetrievalDependencies<
+  TChunk extends RetrievedChunk = RetrievedChunk,
+> {
   vectorSearch: (
     branchIndexId: string,
     query: string,
@@ -58,6 +71,7 @@ export interface RetrievalDependencies<TChunk extends RetrievedChunk = Retrieved
       depth?: number;
     },
   ) => Promise<Record<string, unknown>>;
+  codeRelationshipLookup?: CodeRelationshipLookupFunction;
   keywordSearch: SearchCodeFunction<TChunk>;
 }
 
@@ -68,6 +82,7 @@ export const defaultRetrievalBudget: RetrievalBudget = {
   maxContextTokens: 12000,
   maxAgentTurns: 12,
   maxKeywordSearchCalls: 4,
+  maxGraphLookupCalls: 6,
 };
 
 export function getRetrievalBudget(
@@ -99,13 +114,19 @@ export function getRetrievalBudget(
       env.RETRIEVAL_MAX_KEYWORD_SEARCH_CALLS,
       defaultRetrievalBudget.maxKeywordSearchCalls,
     ),
+    maxGraphLookupCalls: positiveInteger(
+      env.RETRIEVAL_MAX_GRAPH_LOOKUP_CALLS,
+      defaultRetrievalBudget.maxGraphLookupCalls,
+    ),
   };
   return { ...configured, ...overrides };
 }
 
 export function chunkIdentity(chunk: RetrievedChunk): string {
-  return chunk.id?.trim()
-    || `${chunk.commitSha}:${chunk.filePath}:${chunk.startLine}-${chunk.endLine}:${chunk.content}`;
+  return (
+    chunk.id?.trim() ||
+    `${chunk.commitSha}:${chunk.filePath}:${chunk.startLine}-${chunk.endLine}:${chunk.content}`
+  );
 }
 
 export function estimateTokens(text: string): number {
@@ -118,21 +139,30 @@ export function collectUsefulChunks<TChunk extends RetrievedChunk>(
   budget: RetrievalBudget,
 ): TChunk[] {
   const seen = new Set(existing.map(chunkIdentity));
-  let tokens = existing.reduce((total, chunk) => total + estimateTokens(chunk.content), 0);
+  let tokens = existing.reduce(
+    (total, chunk) => total + estimateTokens(chunk.content),
+    0,
+  );
   const collected = [...existing];
 
   for (const chunk of candidates) {
     if (!chunk.content.trim()) continue;
     const id = chunkIdentity(chunk);
     if (seen.has(id)) {
-      const existingIndex = collected.findIndex((item) => chunkIdentity(item) === id);
+      const existingIndex = collected.findIndex(
+        (item) => chunkIdentity(item) === id,
+      );
       if (existingIndex >= 0) {
         const existingChunk = collected[existingIndex];
         const sources = new Set([
           ...(existingChunk.retrievalSources ?? []),
           ...(chunk.retrievalSources ?? []),
         ]);
-        collected[existingIndex] = { ...existingChunk, ...chunk, retrievalSources: [...sources] } as TChunk;
+        collected[existingIndex] = {
+          ...existingChunk,
+          ...chunk,
+          retrievalSources: [...sources],
+        } as TChunk;
       }
       continue;
     }
@@ -150,7 +180,9 @@ const retrievalOutcomeSchema = z.object({
   status: z.enum(["sufficient", "insufficient"]),
 });
 
-export async function runRetrievalAgent<TChunk extends RetrievedChunk = RetrievedChunk>(
+export async function runRetrievalAgent<
+  TChunk extends RetrievedChunk = RetrievedChunk,
+>(
   question: string,
   branchIndexId: string,
   config: RetrievalAgentConfig,
@@ -159,10 +191,12 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
 ): Promise<RetrievalOutcome<TChunk>> {
   const { vectorSearch: vectorSearchDependency, keywordSearch } = dependencies;
   const repositoryStructureLookup = dependencies.repositoryStructureLookup;
+  const codeRelationshipLookup = dependencies.codeRelationshipLookup;
   const budget = getRetrievalBudget(config.budget);
   const state: RetrievalRunState<TChunk> = {
     calls: 0,
     keywordCalls: 0,
+    graphCalls: 0,
     chunks: [],
     chunkIds: new Set(),
     contextTokens: 0,
@@ -171,21 +205,32 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
   const vectorSearch = tool({
     name: "vector_search",
     description: "Search the authorized branch index for relevant code chunks.",
-    parameters: z.object({
-      query: z.string().min(1),
-      limit: z.number().int().positive(),
-    }).strict(),
+    parameters: z
+      .object({
+        query: z.string().min(1),
+        limit: z.number().int().positive(),
+      })
+      .strict(),
     strict: true,
     execute: async ({ query, limit }) => {
       if (state.calls >= budget.maxSearchCalls) {
-        return { chunks: [], newChunks: 0, remainingSearches: 0, limitReached: true };
+        return {
+          chunks: [],
+          newChunks: 0,
+          remainingSearches: 0,
+          limitReached: true,
+        };
       }
       state.calls += 1;
       const cappedLimit = Math.min(
         Math.max(1, Math.floor(limit)),
         budget.maxChunksPerSearch,
       );
-      const found = await vectorSearchDependency(branchIndexId, query.trim(), cappedLimit);
+      const found = await vectorSearchDependency(
+        branchIndexId,
+        query.trim(),
+        cappedLimit,
+      );
       const before = state.chunks.length;
       const beforeIds = new Set(state.chunks.map(chunkIdentity));
       state.chunks = collectUsefulChunks(state.chunks, found, budget);
@@ -204,95 +249,122 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
         newChunks,
         remainingSearches: Math.max(0, budget.maxSearchCalls - state.calls),
         uniqueChunkCount: state.chunks.length,
-        remainingChunkCapacity: Math.max(0, budget.maxUniqueChunks - state.chunks.length),
+        remainingChunkCapacity: Math.max(
+          0,
+          budget.maxUniqueChunks - state.chunks.length,
+        ),
         contextTokens: state.contextTokens,
-        remainingContextTokenCapacity: Math.max(0, budget.maxContextTokens - state.contextTokens),
-        limitReached: state.calls >= budget.maxSearchCalls
-          || state.chunks.length >= budget.maxUniqueChunks
-          || state.contextTokens >= budget.maxContextTokens,
+        remainingContextTokenCapacity: Math.max(
+          0,
+          budget.maxContextTokens - state.contextTokens,
+        ),
+        limitReached:
+          state.calls >= budget.maxSearchCalls ||
+          state.chunks.length >= budget.maxUniqueChunks ||
+          state.contextTokens >= budget.maxContextTokens,
       };
     },
   });
 
   const searchCodeTool = tool({
-        name: "searchCode",
-        description: "Search PostgreSQL text or exact code identifiers in the authorized branch index.",
-        parameters: z.object({
-          query: z.string().min(1),
-          mode: z.enum(["full_text", "identifier"]),
-          filters: z.object({
+    name: "searchCode",
+    description:
+      "Search PostgreSQL text or exact code identifiers in the authorized branch index.",
+    parameters: z
+      .object({
+        query: z.string().min(1),
+        mode: z.enum(["full_text", "identifier"]),
+        filters: z
+          .object({
             filePath: z.string().min(1).optional(),
             className: z.string().min(1).optional(),
             symbolName: z.string().min(1).optional(),
             symbolType: z.string().min(1).optional(),
             language: z.string().min(1).optional(),
-          }).strict().optional(),
-          limit: z.number().int().positive(),
-        }).strict(),
-        strict: true,
-        execute: async ({ query, mode, filters, limit }) => {
-          if (
-            state.calls >= budget.maxSearchCalls
-            || state.keywordCalls >= budget.maxKeywordSearchCalls
-          ) {
-            return { chunks: [], newChunks: 0, remainingSearches: 0, limitReached: true };
-          }
-          state.calls += 1;
-          state.keywordCalls += 1;
-          const cappedLimit = Math.min(
-            Math.max(1, Math.floor(limit)),
-            budget.maxChunksPerSearch,
-          );
-          const found = await keywordSearch(
-            branchIndexId,
-            query.trim(),
-            mode,
-            filters ?? {},
-            cappedLimit,
-          );
-          const before = state.chunks.length;
-          const beforeIds = new Set(state.chunks.map(chunkIdentity));
-          state.chunks = collectUsefulChunks(state.chunks, found, budget);
-          state.contextTokens = state.chunks.reduce(
-            (total, chunk) => total + estimateTokens(chunk.content),
-            0,
-          );
-          const newChunks = state.chunks.length - before;
-          const newChunkResults = state.chunks.filter(
-            (chunk) => !beforeIds.has(chunkIdentity(chunk)),
-          );
-          return {
-            chunks: newChunkResults,
-            newChunks,
-            remainingSearches: Math.max(0, budget.maxSearchCalls - state.calls),
-            remainingKeywordSearches: Math.max(
-              0,
-              budget.maxKeywordSearchCalls - state.keywordCalls,
-            ),
-            uniqueChunkCount: state.chunks.length,
-            remainingChunkCapacity: Math.max(0, budget.maxUniqueChunks - state.chunks.length),
-            contextTokens: state.contextTokens,
-            remainingContextTokenCapacity: Math.max(0, budget.maxContextTokens - state.contextTokens),
-            limitReached: state.calls >= budget.maxSearchCalls
-              || state.keywordCalls >= budget.maxKeywordSearchCalls
-              || state.chunks.length >= budget.maxUniqueChunks
-              || state.contextTokens >= budget.maxContextTokens,
-          };
-        },
-      });
+          })
+          .strict()
+          .optional(),
+        limit: z.number().int().positive(),
+      })
+      .strict(),
+    strict: true,
+    execute: async ({ query, mode, filters, limit }) => {
+      if (
+        state.calls >= budget.maxSearchCalls ||
+        state.keywordCalls >= budget.maxKeywordSearchCalls
+      ) {
+        return {
+          chunks: [],
+          newChunks: 0,
+          remainingSearches: 0,
+          limitReached: true,
+        };
+      }
+      state.calls += 1;
+      state.keywordCalls += 1;
+      const cappedLimit = Math.min(
+        Math.max(1, Math.floor(limit)),
+        budget.maxChunksPerSearch,
+      );
+      const found = await keywordSearch(
+        branchIndexId,
+        query.trim(),
+        mode,
+        filters ?? {},
+        cappedLimit,
+      );
+      const before = state.chunks.length;
+      const beforeIds = new Set(state.chunks.map(chunkIdentity));
+      state.chunks = collectUsefulChunks(state.chunks, found, budget);
+      state.contextTokens = state.chunks.reduce(
+        (total, chunk) => total + estimateTokens(chunk.content),
+        0,
+      );
+      const newChunks = state.chunks.length - before;
+      const newChunkResults = state.chunks.filter(
+        (chunk) => !beforeIds.has(chunkIdentity(chunk)),
+      );
+      return {
+        chunks: newChunkResults,
+        newChunks,
+        remainingSearches: Math.max(0, budget.maxSearchCalls - state.calls),
+        remainingKeywordSearches: Math.max(
+          0,
+          budget.maxKeywordSearchCalls - state.keywordCalls,
+        ),
+        uniqueChunkCount: state.chunks.length,
+        remainingChunkCapacity: Math.max(
+          0,
+          budget.maxUniqueChunks - state.chunks.length,
+        ),
+        contextTokens: state.contextTokens,
+        remainingContextTokenCapacity: Math.max(
+          0,
+          budget.maxContextTokens - state.contextTokens,
+        ),
+        limitReached:
+          state.calls >= budget.maxSearchCalls ||
+          state.keywordCalls >= budget.maxKeywordSearchCalls ||
+          state.chunks.length >= budget.maxUniqueChunks ||
+          state.contextTokens >= budget.maxContextTokens,
+      };
+    },
+  });
 
   const repositoryStructureLookupTool = tool({
     name: "repository_structure_lookup",
     description:
       "Explore the authorized branch's stored Git-tracked file paths. Use overview, directory listing, nested tree, or filename/path search as useful.",
-    parameters: z.object({
-      mode: z.enum(["overview", "list_directory", "tree", "search"]),
-      path: z.string().optional(),
-      query: z.string().optional(),
-      offset: z.number().int().nonnegative().optional(),
-      limit: z.number().int().positive().optional(),
-      depth: z.number().int().positive().optional(),
-    }).strict(),
+    parameters: z
+      .object({
+        mode: z.enum(["overview", "list_directory", "tree", "search"]),
+        path: z.string().optional(),
+        query: z.string().optional(),
+        offset: z.number().int().nonnegative().optional(),
+        limit: z.number().int().positive().optional(),
+        depth: z.number().int().positive().optional(),
+      })
+      .strict(),
     strict: true,
     execute: async ({ mode, path, query, offset, limit, depth }) => {
       if (!repositoryStructureLookup) {
@@ -306,6 +378,55 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
         limit: Math.min(limit ?? 50, 100),
         depth: Math.min(depth ?? 2, 5),
       });
+    },
+  });
+
+  const codeRelationshipLookupTool = tool({
+    name: "code_relationship_lookup",
+    description:
+      "Navigate the authorized branch's persisted active code graph (symbols, callers, callees, class inheritance/implementations, and bounded cross-file execution paths). Use this for structural and call-flow discovery, then fetch actual source code with searchCode or vector_search.",
+    parameters: z
+      .object({
+        mode: z.enum([
+          "symbol_lookup",
+          "find_callers",
+          "find_callees",
+          "class_dependencies",
+          "execution_path",
+        ]),
+        symbolId: z.string().min(1).max(128).optional(),
+        symbolName: z.string().min(1).max(255).optional(),
+        qualifiedName: z.string().min(1).max(512).optional(),
+        filePath: z.string().min(1).max(1024).optional(),
+        containerName: z.string().min(1).max(255).optional(),
+        kind: z.enum(["function", "method", "class", "interface"]).optional(),
+        targetSymbolId: z.string().min(1).max(128).optional(),
+        targetSymbolName: z.string().min(1).max(255).optional(),
+        targetQualifiedName: z.string().min(1).max(512).optional(),
+        targetFilePath: z.string().min(1).max(1024).optional(),
+        direction: z.enum(["outgoing", "incoming"]).optional(),
+        maxDepth: z.number().int().positive().optional(),
+        limit: z.number().int().positive().optional(),
+      })
+      .strict(),
+    strict: true,
+    execute: async (input) => {
+      if (state.graphCalls >= budget.maxGraphLookupCalls) {
+        return {
+          status: "limit_reached",
+          message:
+            "Graph lookup limit reached. Retrieve source code implementations using searchCode or vector_search.",
+          remainingGraphLookups: 0,
+        };
+      }
+      state.graphCalls += 1;
+      if (!codeRelationshipLookup) {
+        return {
+          status: "unavailable",
+          message: "Code relationship lookup is unavailable for this branch.",
+        };
+      }
+      return codeRelationshipLookup(branchIndexId, input);
     },
   });
 
@@ -324,6 +445,11 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
       "A file appearing in repository structure does not mean its contents have been retrieved. Use existing retrieval tools and searchCode metadata filters such as filePath to retrieve indexed chunks when useful.",
       "Decide independently whether repository structure is useful and which directories or files to explore; do not follow a fixed exploration sequence.",
       "If repository_structure_lookup reports that structure is unavailable, continue with existing retrieval tools. Do not assume the repository is empty or repeatedly retry the lookup.",
+      "Use code_relationship_lookup when the question benefits from structural or call-graph navigation: finding callers (find_callers), finding callees (find_callees), exploring class inheritance/implementations/members (class_dependencies), locating symbol definitions (symbol_lookup), or tracing cross-file execution flows (execution_path).",
+      "Do not force every question through code_relationship_lookup. When a question is purely conceptual, asks for config/documentation, or can be answered directly via vector_search or searchCode, skip graph lookup.",
+      "code_relationship_lookup returns symbol metadata and verified graph edges, not source code chunks. After discovering relevant symbols, files, or execution paths via the graph, use searchCode (with filePath, symbolName, or className filters) or vector_search to retrieve the actual source code implementations.",
+      "Never treat graph relationships alone as proof of what a function does, and never treat unresolved relationships (isResolved=false) or ambiguous candidates as confirmed connections. If code_relationship_lookup reports status='ambiguous', disambiguate using symbolId or filePath/containerName instead of guessing.",
+      "If code_relationship_lookup reports unavailable, continue with vector_search and searchCode without retrying repeatedly.",
       "Use vector_search for semantic or conceptual questions.",
       "Use searchCode with mode='full_text' for natural-language terms, phrases, comments, error messages, file names, symbols or signatures.",
       "Use searchCode with mode='identifier' for a specific camelCase, PascalCase, snake_case or $-prefixed code identifier.",
@@ -337,15 +463,24 @@ export async function runRetrievalAgent<TChunk extends RetrievedChunk = Retrieve
       "Never create the final user-facing answer or cite sources yourself.",
     ].join("\n"),
     model: await provider.getModel(config.model),
-    tools: [vectorSearch, searchCodeTool, repositoryStructureLookupTool],
+    tools: [
+      vectorSearch,
+      searchCodeTool,
+      repositoryStructureLookupTool,
+      codeRelationshipLookupTool,
+    ],
     outputType: retrievalOutcomeSchema,
   });
 
   let status: RetrievalOutcome<TChunk>["status"] = "insufficient";
   try {
-    const result = await runAgent(agent, `Original user question: ${question}`, {
-      maxTurns: budget.maxAgentTurns,
-    });
+    const result = await runAgent(
+      agent,
+      `Original user question: ${question}`,
+      {
+        maxTurns: budget.maxAgentTurns,
+      },
+    );
     const parsed = retrievalOutcomeSchema.safeParse(result.finalOutput);
     if (parsed.success) status = parsed.data.status;
   } catch {

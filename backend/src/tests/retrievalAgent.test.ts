@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { invokeFunctionTool, RunContext, type FunctionTool } from "@openai/agents";
+import {
+  invokeFunctionTool,
+  RunContext,
+  type FunctionTool,
+} from "@openai/agents";
 import {
   collectUsefulChunks,
   defaultRetrievalBudget,
@@ -22,9 +26,16 @@ function chunk(id: string, content = `content ${id}`): RetrievedChunk {
 
 test("deduplicates chunks and preserves metadata", () => {
   const first = chunk("a");
-  const collected = collectUsefulChunks([first], [first, chunk("b")], defaultRetrievalBudget);
+  const collected = collectUsefulChunks(
+    [first],
+    [first, chunk("b")],
+    defaultRetrievalBudget,
+  );
 
-  assert.deepEqual(collected.map((item) => item.id), ["a", "b"]);
+  assert.deepEqual(
+    collected.map((item) => item.id),
+    ["a", "b"],
+  );
   assert.equal(collected[1].filePath, "src/b.ts");
   assert.equal(collected[1].commitSha, first.commitSha);
 });
@@ -48,6 +59,7 @@ test("registers code retrieval and repository structure tools", async () => {
     "vector_search",
     "searchCode",
     "repository_structure_lookup",
+    "code_relationship_lookup",
   ]);
 });
 
@@ -65,23 +77,44 @@ test("deduplicates across retrieval sources and retains source metadata", () => 
     language: "typescript",
     retrievalSources: ["identifier"],
   };
-  const collected = collectUsefulChunks([vector], [keyword], defaultRetrievalBudget);
+  const collected = collectUsefulChunks(
+    [vector],
+    [keyword],
+    defaultRetrievalBudget,
+  );
 
   assert.equal(collected.length, 1);
-  assert.deepEqual(collected[0].retrievalSources?.sort(), ["identifier", "vector"]);
+  assert.deepEqual(collected[0].retrievalSources?.sort(), [
+    "identifier",
+    "vector",
+  ]);
   assert.equal(collected[0].symbolName, "createBooking");
-  assert.equal(collected[0].functionSignature, "createBooking(input: BookingInput)");
+  assert.equal(
+    collected[0].functionSignature,
+    "createBooking(input: BookingInput)",
+  );
 });
 
 test("enforces unique chunk and context budgets", () => {
-  const budget = { ...defaultRetrievalBudget, maxUniqueChunks: 2, maxContextTokens: 20 };
-  const collected = collectUsefulChunks([], [
-    chunk("a", "12345678"),
-    chunk("b", "12345678"),
-    chunk("c", "123456789012345678901234567890"),
-  ], budget);
+  const budget = {
+    ...defaultRetrievalBudget,
+    maxUniqueChunks: 2,
+    maxContextTokens: 20,
+  };
+  const collected = collectUsefulChunks(
+    [],
+    [
+      chunk("a", "12345678"),
+      chunk("b", "12345678"),
+      chunk("c", "123456789012345678901234567890"),
+    ],
+    budget,
+  );
 
-  assert.deepEqual(collected.map((item) => item.id), ["a", "b"]);
+  assert.deepEqual(
+    collected.map((item) => item.id),
+    ["a", "b"],
+  );
 });
 
 test("uses the authorized branch and caps the search limit", async () => {
@@ -121,14 +154,29 @@ test("uses the authorized branch and caps the search limit", async () => {
 
   assert.equal(searchedBranch, "authorized-branch-id");
   assert.equal(searchedLimit, defaultRetrievalBudget.maxChunksPerSearch);
-  assert.match(agentInstructions, /source code together with available contextual metadata/);
-  assert.match(agentInstructions, /Use vector_search for semantic or conceptual questions/);
+  assert.match(
+    agentInstructions,
+    /source code together with available contextual metadata/,
+  );
+  assert.match(
+    agentInstructions,
+    /Use vector_search for semantic or conceptual questions/,
+  );
   assert.match(agentInstructions, /all Git-tracked file paths/);
-  assert.match(agentInstructions, /does not mean its contents have been retrieved/);
+  assert.match(
+    agentInstructions,
+    /does not mean its contents have been retrieved/,
+  );
   assert.match(agentInstructions, /metadata filters such as filePath/);
   assert.match(agentInstructions, /structure is unavailable/);
-  assert.match(agentInstructions, /Do not assume the repository is empty or repeatedly retry/);
-  assert.match(agentInstructions, /Never invent file paths, class names, or symbol names/);
+  assert.match(
+    agentInstructions,
+    /Do not assume the repository is empty or repeatedly retry/,
+  );
+  assert.match(
+    agentInstructions,
+    /Never invent file paths, class names, or symbol names/,
+  );
 });
 
 test("repository structure lookup is bound to the conversation branch and paginated", async () => {
@@ -209,7 +257,11 @@ test("one search can be sufficient and another search can refine evidence", asyn
   await runRetrievalAgent(
     "How is authentication initialized?",
     "branch-id",
-    { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
+    {
+      apiKey: "test-key",
+      baseUrl: "https://example.invalid/v1",
+      model: "test-model",
+    },
     {
       vectorSearch: async (_branchId, query) => {
         queries.push(query);
@@ -236,7 +288,11 @@ test("one search can be sufficient and another search can refine evidence", asyn
   await runRetrievalAgent(
     "How is authentication initialized?",
     "branch-id",
-    { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
+    {
+      apiKey: "test-key",
+      baseUrl: "https://example.invalid/v1",
+      model: "test-model",
+    },
     {
       vectorSearch: async (_branchId, query) => {
         queries.push(query);
@@ -254,7 +310,11 @@ test("invalid agent output and empty evidence are treated as insufficient", asyn
   const outcome = await runRetrievalAgent(
     "missing behavior",
     "branch-id",
-    { apiKey: "test-key", baseUrl: "https://example.invalid/v1", model: "test-model" },
+    {
+      apiKey: "test-key",
+      baseUrl: "https://example.invalid/v1",
+      model: "test-model",
+    },
     { vectorSearch: async () => [], keywordSearch: async () => [] },
     mockRun,
   );
@@ -303,7 +363,13 @@ test("maximum search calls are enforced independently of agent turns", async () 
 
 test("searchCode is exposed with filters and shares the overall search budget", async () => {
   let searched:
-    | { branchId: string; query: string; mode: string; filters: unknown; limit: number }
+    | {
+        branchId: string;
+        query: string;
+        mode: string;
+        filters: unknown;
+        limit: number;
+      }
     | undefined;
   const mockRun = (async (agent: any) => {
     const searchCodeTool = agent.tools[1] as FunctionTool;
@@ -341,7 +407,11 @@ test("searchCode is exposed with filters and shares the overall search budget", 
       apiKey: "test-key",
       baseUrl: "https://example.invalid/v1",
       model: "test-model",
-      budget: { maxSearchCalls: 3, maxKeywordSearchCalls: 1, maxChunksPerSearch: 4 },
+      budget: {
+        maxSearchCalls: 3,
+        maxKeywordSearchCalls: 1,
+        maxChunksPerSearch: 4,
+      },
     },
     {
       vectorSearch: async () => [],
@@ -371,4 +441,244 @@ test("searchCode is exposed with filters and shares the overall search budget", 
   });
   assert.equal(outcome.searchCalls, 1);
   assert.equal(outcome.chunks.length, 1);
+});
+
+test("code_relationship_lookup is bound to the authorized branch and enforces graph budget independently", async () => {
+  const recorded: Array<{ branchIndexId: string; query: unknown }> = [];
+  let agentInstructions = "";
+  let graphLimitResult: unknown;
+  let unavailableResult: unknown;
+
+  const mockRun = (async (agent: any) => {
+    agentInstructions = agent.instructions;
+    const graphTool = agent.tools.find(
+      (t: { name: string }) => t.name === "code_relationship_lookup",
+    ) as FunctionTool;
+    assert.ok(graphTool);
+
+    await invokeFunctionTool({
+      tool: graphTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        mode: "find_callers",
+        symbolName: "createBooking",
+        filePath: "src/services/bookingService.ts",
+      }),
+    });
+
+    graphLimitResult = await invokeFunctionTool({
+      tool: graphTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        mode: "symbol_lookup",
+        symbolName: "BookingController",
+      }),
+    });
+
+    return { finalOutput: { status: "sufficient" } };
+  }) as any;
+
+  const outcome = await runRetrievalAgent(
+    "Who calls createBooking?",
+    "authorized-branch-id",
+    {
+      apiKey: "test-key",
+      model: "test-model",
+      budget: { maxGraphLookupCalls: 1, maxSearchCalls: 4 },
+    },
+    {
+      vectorSearch: async () => [],
+      keywordSearch: async () => [],
+      codeRelationshipLookup: async (branchIndexId, query) => {
+        recorded.push({ branchIndexId, query });
+        return { status: "ok", callers: [] };
+      },
+    },
+    mockRun,
+  );
+
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].branchIndexId, "authorized-branch-id");
+  assert.deepEqual(recorded[0].query, {
+    mode: "find_callers",
+    symbolName: "createBooking",
+    filePath: "src/services/bookingService.ts",
+  });
+  assert.deepEqual(graphLimitResult, {
+    status: "limit_reached",
+    message:
+      "Graph lookup limit reached. Retrieve source code implementations using searchCode or vector_search.",
+    remainingGraphLookups: 0,
+  });
+  assert.equal(outcome.searchCalls, 0);
+  assert.match(agentInstructions, /code_relationship_lookup/);
+  assert.match(
+    agentInstructions,
+    /Never treat graph relationships alone as proof/,
+  );
+
+  // Graceful fallback when codeRelationshipLookup dependency is not configured
+  const fallbackRun = (async (agent: any) => {
+    const graphTool = agent.tools.find(
+      (t: { name: string }) => t.name === "code_relationship_lookup",
+    ) as FunctionTool;
+    unavailableResult = await invokeFunctionTool({
+      tool: graphTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({ mode: "symbol_lookup", symbolName: "boot" }),
+    });
+    return { finalOutput: { status: "insufficient" } };
+  }) as any;
+
+  await runRetrievalAgent(
+    "Find boot",
+    "branch-id",
+    { apiKey: "test-key", model: "test-model" },
+    { vectorSearch: async () => [], keywordSearch: async () => [] },
+    fallbackRun,
+  );
+  assert.deepEqual(unavailableResult, {
+    status: "unavailable",
+    message: "Code relationship lookup is unavailable for this branch.",
+  });
+});
+
+test("retrieval agent uses graph exploration followed by source-code retrieval", async () => {
+  const searchCalls: Array<{ query: string; mode: string; filters: unknown }> =
+    [];
+
+  const mockRun = (async (agent: any) => {
+    const graphTool = agent.tools.find(
+      (t: { name: string }) => t.name === "code_relationship_lookup",
+    ) as FunctionTool;
+    const searchCodeTool = agent.tools.find(
+      (t: { name: string }) => t.name === "searchCode",
+    ) as FunctionTool;
+
+    const trace = (await invokeFunctionTool({
+      tool: graphTool,
+      runContext: new RunContext(),
+      input: JSON.stringify({
+        mode: "execution_path",
+        qualifiedName: "ApiController.handle",
+        maxDepth: 4,
+      }),
+    })) as {
+      paths: Array<{
+        hops: Array<{ toSymbol: { name: string; filePath: string } }>;
+      }>;
+    };
+
+    // Agent uses discovered symbols/file paths from graph trace to retrieve source code
+    for (const hop of trace.paths[0].hops) {
+      await invokeFunctionTool({
+        tool: searchCodeTool,
+        runContext: new RunContext(),
+        input: JSON.stringify({
+          query: hop.toSymbol.name,
+          mode: "identifier",
+          filters: {
+            filePath: hop.toSymbol.filePath,
+            symbolName: hop.toSymbol.name,
+          },
+          limit: 3,
+        }),
+      });
+    }
+
+    return { finalOutput: { status: "sufficient" } };
+  }) as any;
+
+  const outcome = await runRetrievalAgent(
+    "Trace how ApiController.handle processes and persists a booking",
+    "authorized-branch-id",
+    { apiKey: "test-key", model: "test-model" },
+    {
+      vectorSearch: async () => [],
+      keywordSearch: async (_branchId, query, mode, filters) => {
+        searchCalls.push({ query, mode, filters });
+        if (query === "create") {
+          return [
+            {
+              id: "chunk-svc",
+              filePath: "src/services/bookingService.ts",
+              content: "create() { return this.repo.insert(); }",
+              startLine: 10,
+              endLine: 15,
+              commitSha: "0123456789abcdef0123456789abcdef01234567",
+              symbolName: "create",
+              retrievalSources: ["identifier"],
+            },
+          ];
+        }
+        return [
+          {
+            id: "chunk-repo",
+            filePath: "src/repositories/bookingRepo.ts",
+            content: "insert() { return db.query(...); }",
+            startLine: 5,
+            endLine: 12,
+            commitSha: "0123456789abcdef0123456789abcdef01234567",
+            symbolName: "insert",
+            retrievalSources: ["identifier"],
+          },
+        ];
+      },
+      codeRelationshipLookup: async (_branchId, query) => {
+        assert.equal(query.mode, "execution_path");
+        return {
+          status: "ok",
+          paths: [
+            {
+              depth: 2,
+              summary:
+                "src/controllers/apiController.ts:ApiController.handle -> src/services/bookingService.ts:BookingService.create -> src/repositories/bookingRepo.ts:BookingRepo.insert",
+              hops: [
+                {
+                  step: 1,
+                  toSymbol: {
+                    name: "create",
+                    filePath: "src/services/bookingService.ts",
+                  },
+                },
+                {
+                  step: 2,
+                  toSymbol: {
+                    name: "insert",
+                    filePath: "src/repositories/bookingRepo.ts",
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    mockRun,
+  );
+
+  assert.equal(outcome.status, "sufficient");
+  assert.equal(outcome.searchCalls, 2);
+  assert.deepEqual(
+    outcome.chunks.map((c) => c.id),
+    ["chunk-svc", "chunk-repo"],
+  );
+  assert.deepEqual(searchCalls, [
+    {
+      query: "create",
+      mode: "identifier",
+      filters: {
+        filePath: "src/services/bookingService.ts",
+        symbolName: "create",
+      },
+    },
+    {
+      query: "insert",
+      mode: "identifier",
+      filters: {
+        filePath: "src/repositories/bookingRepo.ts",
+        symbolName: "insert",
+      },
+    },
+  ]);
 });
